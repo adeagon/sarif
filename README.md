@@ -42,15 +42,15 @@ npm run dev:all    # frontend + backend
 
 ![Sarif dashboard](screenshots/sarif-overview.png)
 
-**Award Search** searches live award availability via [seats.aero](https://seats.aero) across 30+ loyalty programs and shows cash prices next to point costs.
+**Award Search** pulls live award availability from [seats.aero](https://seats.aero), which aggregates availability across 30+ airline loyalty programs (United, Aeroplan, Flying Blue, etc.) into one API. Sarif shows these results alongside cash prices from [Sky Scrapper](https://rapidapi.com/apiheya/api/sky-scrapper) (business/premium economy) and [Travelpayouts](https://www.travelpayouts.com/developers/api) (economy), so you can compare points vs. dollars on the same screen.
 
-**Points & Miles** tracks balances across all your programs and shows transfer partner mappings.
+**Points & Miles** tracks balances across all your programs and shows which transferable currencies (Amex MR, Chase UR, etc.) can move where.
 
-**US Presence Tracker** counts rolling 180-day and 365-day totals, runs the IRS Substantial Presence Test, and suggests exit dates.
+**US Presence Tracker** counts rolling 180-day and 365-day totals, runs the IRS Substantial Presence Test (the 3-year weighted formula), and suggests exit dates so you don't accidentally trigger tax residency.
 
-**Schengen Tracker** shows your 90/180-day rolling window with warnings as you approach the limit.
+**Schengen Tracker** does the same for the 90/180-day Schengen rule.
 
-**Trip Planner** lets you simulate future trips against both US and Schengen limits before booking.
+**Trip Planner** lets you simulate future trips against both US and Schengen limits before you book anything.
 
 ![Award Search](screenshots/sarif-search.png)
 
