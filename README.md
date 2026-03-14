@@ -34,11 +34,7 @@ Works without any API keys. Award search and live prices turn on once you add th
 | `RAPIDAPI_KEY` | Business/PE cash prices | [Sky Scrapper on RapidAPI](https://rapidapi.com/apiheya/api/sky-scrapper) | Free (100 req/mo) or $8.99/mo (10k req) |
 | `TRAVELPAYOUTS_TOKEN` | Economy cash baseline | [travelpayouts.com](https://www.travelpayouts.com/developers/api) | Free |
 
-Add keys to `.env`, then start the backend:
-
-```bash
-npm run dev:all    # frontend + backend
-```
+Add keys to `.env` and restart `npm run dev` — it runs both the frontend and the API server automatically.
 
 ## Overview
 

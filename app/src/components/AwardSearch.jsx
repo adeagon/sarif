@@ -452,19 +452,22 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
   const [cashPEPrices,    setCashPEPrices]    = useState(null);
   const [cashPELoading,   setCashPELoading]   = useState(false);
 
+  const [serverDown, setServerDown] = useState(false);
+
   async function fetchCashPrices(o, d, cab) {
     setCashLoading(true);
     setCashPrices(null);
     try {
       const res  = await fetch(`http://localhost:3001/api/cash?origin=${o}&destination=${d}&cabin=${cab}`);
       const data = await res.json();
+      setServerDown(false);
       if (data.error) { setCashPrices([]); return; }
       const prices = data.prices || [];
       setCashPrices(prices);
       if (prices.length > 0 && cab === 'Y') {
         setCashPrice(p => p || String(prices[0].price));
       }
-    } catch { setCashPrices([]); }
+    } catch { setCashPrices([]); setServerDown(true); }
     finally  { setCashLoading(false); }
   }
 
@@ -475,9 +478,10 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
       const dateParam = dateFrom ? `&date=${dateFrom}` : '';
       const res  = await fetch(`http://localhost:3001/api/cashbiz?origin=${o}&destination=${d}&cabin=${cab}${dateParam}`);
       const data = await res.json();
+      setServerDown(false);
       if (data.error) { setPrices([]); return; }
       setPrices(data.prices || []);
-    } catch { setPrices([]); }
+    } catch { setPrices([]); setServerDown(true); }
     finally  { setLoading(false); }
   }
 
@@ -743,6 +747,19 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
       {loading && (
         <div className="rounded-xl border border-white/5 bg-white/3 p-8 text-center text-slate-500 text-sm">
           Searching {isRoundTrip ? 'both directions' : 'across all programs'}...
+        </div>
+      )}
+
+      {/* ── Server-down warning ──────────────────────────────────────────── */}
+      {serverDown && !loading && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-2.5 text-sm">
+          <span className="text-amber-400 mt-0.5 shrink-0">&#9888;</span>
+          <div>
+            <span className="text-amber-300 font-medium">API server not reachable</span>
+            <span className="text-amber-400/70"> — cash prices unavailable. Make sure you started with </span>
+            <code className="text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded text-xs">npm run dev</code>
+            <span className="text-amber-400/70"> which runs both the frontend and the API server.</span>
+          </div>
         </div>
       )}
 
