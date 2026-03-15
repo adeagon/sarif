@@ -64,9 +64,10 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
 
   const [currentDep,    setCurrentDep]    = useState('');  // planned departure of active US stay
   const [currentSchDep, setCurrentSchDep] = useState('');  // planned departure of active Schengen stay
-  const [planned,    setPlanned]    = useState([newTrip('US')]);
+  const defaultZone = (citizenship === 'us' || citizenship === 'both') ? 'Schengen' : 'US';
+  const [planned,    setPlanned]    = useState([newTrip(defaultZone)]);
 
-  function addTrip()                { setPlanned(p => [...p, newTrip()]); }
+  function addTrip()                { setPlanned(p => [...p, newTrip(defaultZone)]); }
   function removeTrip(id)           { setPlanned(p => p.filter(t => t.id !== id)); }
   function update(id, field, val)   { setPlanned(p => p.map(t => t.id === id ? { ...t, [field]: val } : t)); }
 
@@ -102,7 +103,7 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
       </div>
 
       {/* Step 1: current departure if in US */}
-      {activeTrip && (
+      {activeTrip && citizenship !== 'us' && citizenship !== 'both' && (
         <div className="rounded-xl bg-blue-500/8 border border-blue-500/20 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
@@ -129,7 +130,7 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
       )}
 
       {/* Active Schengen stay */}
-      {activeSchTrip && (
+      {activeSchTrip && citizenship !== 'eu' && citizenship !== 'both' && (
         <div className="rounded-xl bg-emerald-500/8 border border-emerald-500/20 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -187,8 +188,8 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
               {i === 0 && <label className="text-xs text-slate-500 block mb-1">Zone</label>}
               <select value={trip.zone} onChange={e => update(trip.id, 'zone', e.target.value)}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors">
-                <option value="US">🇺🇸 US</option>
-                <option value="Schengen">🇪🇺 Schengen</option>
+                {citizenship !== 'us' && citizenship !== 'both' && <option value="US">🇺🇸 US</option>}
+                {citizenship !== 'eu' && citizenship !== 'both' && <option value="Schengen">🇪🇺 Schengen</option>}
               </select>
             </div>
             <button onClick={() => removeTrip(trip.id)}
@@ -216,52 +217,62 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
       </div>
 
       {/* Stats */}
-      <div className="rounded-xl bg-white/3 border border-white/5 p-4 space-y-4">
-        {hasPlanned && (
-          <div className="flex items-center gap-2 text-xs text-slate-500 pb-1">
-            <span>Today</span>
-            <ArrowRight size={11} />
-            <span className="text-slate-300">After all trips · as of {format(refDate, 'MMM d, yyyy')}</span>
-          </div>
-        )}
+      {citizenship !== 'both' && (
+        <div className="rounded-xl bg-white/3 border border-white/5 p-4 space-y-4">
+          {hasPlanned && (
+            <div className="flex items-center gap-2 text-xs text-slate-500 pb-1">
+              <span>Today</span>
+              <ArrowRight size={11} />
+              <span className="text-slate-300">After all trips · as of {format(refDate, 'MMM d, yyyy')}</span>
+            </div>
+          )}
 
-        {/* US */}
-        <div className="space-y-2.5">
-          <span className="text-xs font-semibold text-slate-400">🇺🇸 United States</span>
-          <WindowRow label="Last 365 days"
-            current={current.us365} projected={projected.us365}
-            limit={180} warn={150} showProjected={hasPlanned} />
-          <WindowRow label="Last 180 days"
-            current={current.us180} projected={projected.us180}
-            limit={90} warn={75} showProjected={hasPlanned} />
-          <WindowRow label={`${current.year} calendar year`}
-            current={current.usYear} projected={projected.usYear}
-            limit={180} warn={150} showProjected={hasPlanned} />
-        </div>
+          {/* US */}
+          {citizenship !== 'us' && (
+            <div className="space-y-2.5">
+              <span className="text-xs font-semibold text-slate-400">🇺🇸 United States</span>
+              <WindowRow label="Last 365 days"
+                current={current.us365} projected={projected.us365}
+                limit={180} warn={150} showProjected={hasPlanned} />
+              <WindowRow label="Last 180 days"
+                current={current.us180} projected={projected.us180}
+                limit={90} warn={75} showProjected={hasPlanned} />
+              <WindowRow label={`${current.year} calendar year`}
+                current={current.usYear} projected={projected.usYear}
+                limit={180} warn={150} showProjected={hasPlanned} />
+            </div>
+          )}
 
-        <div className="border-t border-white/5" />
+          {citizenship === 'neither' && <div className="border-t border-white/5" />}
 
-        {/* Schengen */}
-        <div className="space-y-2.5">
-          <span className="text-xs font-semibold text-slate-400">🇪🇺 Schengen</span>
-          <WindowRow label="Rolling 180-day window"
-            current={current.sch} projected={projected.sch}
-            limit={90} warn={75} showProjected={hasPlanned} />
-          {hasPlanned && projected.sch < 90 && (
-            <p className="text-xs text-slate-600">
-              <span className="text-slate-400">{90 - projected.sch} days</span> remaining after all planned trips
-            </p>
+          {/* Schengen */}
+          {citizenship !== 'eu' && (
+            <div className="space-y-2.5">
+              <span className="text-xs font-semibold text-slate-400">🇪🇺 Schengen</span>
+              <WindowRow label="Rolling 180-day window"
+                current={current.sch} projected={projected.sch}
+                limit={90} warn={75} showProjected={hasPlanned} />
+              {hasPlanned && projected.sch < 90 && (
+                <p className="text-xs text-slate-600">
+                  <span className="text-slate-400">{90 - projected.sch} days</span> remaining after all planned trips
+                </p>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="flex items-start gap-2">
-        <Info size={11} className="text-slate-600 mt-0.5 shrink-0" />
-        <p className="text-xs text-slate-600">
-          US has no hard limit but &gt;180d/yr raises immigration flags · 183+d risks tax residency ·
-          Bars show current (solid) + planned additions (faded)
-        </p>
-      </div>
+      {citizenship !== 'both' && (
+        <div className="flex items-start gap-2">
+          <Info size={11} className="text-slate-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-slate-600">
+            {citizenship === 'us' ? 'Schengen 90/180-day rule: max 90 days in any rolling 180-day window' :
+             citizenship === 'eu' ? 'US has no hard limit but >180d/yr raises immigration flags · 183+d risks tax residency' :
+             'US has no hard limit but >180d/yr raises immigration flags · 183+d risks tax residency'} ·
+            Bars show current (solid) + planned additions (faded)
+          </p>
+        </div>
+      )}
     </div>
   );
 }
