@@ -64,7 +64,7 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
 
   const [currentDep,    setCurrentDep]    = useState('');  // planned departure of active US stay
   const [currentSchDep, setCurrentSchDep] = useState('');  // planned departure of active Schengen stay
-  const defaultZone = (citizenship === 'us' || citizenship === 'both') ? 'Schengen' : 'US';
+  const defaultZone = citizenship === 'us' ? 'Schengen' : 'US';
   const [planned,    setPlanned]    = useState([newTrip(defaultZone)]);
 
   function addTrip()                { setPlanned(p => [...p, newTrip(defaultZone)]); }
@@ -188,8 +188,8 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
               {i === 0 && <label className="text-xs text-slate-500 block mb-1">Zone</label>}
               <select value={trip.zone} onChange={e => update(trip.id, 'zone', e.target.value)}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors">
-                {citizenship !== 'us' && citizenship !== 'both' && <option value="US">🇺🇸 US</option>}
-                {citizenship !== 'eu' && citizenship !== 'both' && <option value="Schengen">🇪🇺 Schengen</option>}
+                {(citizenship === 'neither' || citizenship === 'eu' || citizenship === 'both') && <option value="US">🇺🇸 US</option>}
+                {(citizenship === 'neither' || citizenship === 'us' || citizenship === 'both') && <option value="Schengen">🇪🇺 Schengen</option>}
               </select>
             </div>
             <button onClick={() => removeTrip(trip.id)}
@@ -266,9 +266,9 @@ export default function TripPlanner({ usTrips, schengenTrips, citizenship }) {
         <div className="flex items-start gap-2">
           <Info size={11} className="text-slate-600 mt-0.5 shrink-0" />
           <p className="text-xs text-slate-600">
-            {citizenship === 'us' ? 'Schengen 90/180-day rule: max 90 days in any rolling 180-day window' :
-             citizenship === 'eu' ? 'US has no hard limit but >180d/yr raises immigration flags · 183+d risks tax residency' :
-             'US has no hard limit but >180d/yr raises immigration flags · 183+d risks tax residency'} ·
+            {citizenship === 'us' ? 'Schengen 90/180-day rule: max 90 days in any rolling 180-day window.' :
+             citizenship === 'eu' ? 'US has no hard limit but >180d/yr raises immigration flags · 183+d risks tax residency.' :
+             'US >180d/yr raises immigration flags · 183+d risks tax residency · Schengen max 90 days in any rolling 180-day window.'}{' '}
             Bars show current (solid) + planned additions (faded)
           </p>
         </div>

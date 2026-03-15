@@ -138,17 +138,26 @@ export default function TripHistory({
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase placeholder:normal-case placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition-colors duration-150"
               />
             </div>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">Zone</label>
-              <select
-                value={form.zone}
-                onChange={e => setForm(f => ({ ...f, zone: e.target.value }))}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors duration-150"
-              >
-                <option value="US">US</option>
-                <option value="Schengen">Schengen</option>
-              </select>
-            </div>
+            {combined ? (
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Zone</label>
+                <select
+                  value={form.zone}
+                  onChange={e => setForm(f => ({ ...f, zone: e.target.value }))}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors duration-150"
+                >
+                  <option value="US">US</option>
+                  <option value="Schengen">Schengen</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Zone</label>
+                <div className="bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-400">
+                  {zone === 'Schengen' ? 'Schengen' : 'US'}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg transition-colors">Save</button>

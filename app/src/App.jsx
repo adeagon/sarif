@@ -59,7 +59,7 @@ export default function App() {
     DEMO_MODE || !!localStorage.getItem('sarif_onboarding_dismissed') || !!localStorage.getItem('sarif_setup_done')
   );
 
-  const hiddenTabIds = HIDDEN_TABS[citizenship] || [];
+  const hiddenTabIds = HIDDEN_TABS[citizenship] || HIDDEN_TABS.neither;
   const visibleTabs = TABS.filter(t => !hiddenTabIds.includes(t.id));
   const showUsTracking = !hiddenTabIds.includes('trips');
   const showSchengen   = !hiddenTabIds.includes('schengen');
