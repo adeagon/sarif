@@ -31,6 +31,7 @@ export default function TripHistory({
 
   function handleSubmit(e) {
     e.preventDefault();
+    if (form.departure && form.departure < form.arrival) return;
     const tripData = { ...form, departure: form.departure || null };
     if (combined && form.zone === 'Schengen') {
       onAddSchengen(tripData);
@@ -122,6 +123,7 @@ export default function TripHistory({
               <input
                 type="date"
                 value={form.departure}
+                min={form.arrival || undefined}
                 onChange={e => setForm(f => ({ ...f, departure: e.target.value }))}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors duration-150"
               />

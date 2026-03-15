@@ -29,13 +29,8 @@ const TABS = [
   { id: 'points',    label: 'Points',            icon: CreditCard },
 ];
 
-// Tabs to hide per citizenship value
-const HIDDEN_TABS = {
-  us:      ['trips'],                // US citizens have no US stay limits
-  eu:      ['schengen'],             // EU citizens have no Schengen limits
-  both:    ['trips', 'schengen'],    // Citizen of both — no limits at all
-  neither: [],                       // All limits apply
-};
+// Citizenship controls which *tracking widgets* show, not which tabs are visible.
+const CITIZENSHIP_LABELS = { us: '🇺🇸 US', eu: '🇪🇺 EU', both: '🌐 Dual', neither: '🛂 Visitor' };
 
 function loadState(key, fallback) {
   try {
@@ -59,15 +54,9 @@ export default function App() {
     DEMO_MODE || !!localStorage.getItem('sarif_onboarding_dismissed') || !!localStorage.getItem('sarif_setup_done')
   );
 
-  const hiddenTabIds = HIDDEN_TABS[citizenship] || HIDDEN_TABS.neither;
-  const visibleTabs = TABS.filter(t => !hiddenTabIds.includes(t.id));
-  const showUsTracking = !hiddenTabIds.includes('trips');
-  const showSchengen   = !hiddenTabIds.includes('schengen');
-
-  // Redirect to overview if current tab is hidden after citizenship change
-  useEffect(() => {
-    if (hiddenTabIds.includes(activeTab)) setActiveTab('overview');
-  }, [citizenship]);
+  // Citizenship controls tracking widgets, not tab visibility
+  const showUsTracking = citizenship !== 'us' && citizenship !== 'both';
+  const showSchengenTracking = citizenship !== 'eu' && citizenship !== 'both';
 
   // One-time migration: move misrouted trips to the correct array.
   // Old bug: Trip History tab always added to usTrips regardless of zone dropdown.
@@ -186,6 +175,9 @@ export default function App() {
                 {homeAirport}
               </span>
             )}
+            <span className="text-xs text-slate-500 bg-white/5 border border-white/8 px-2.5 py-1 rounded-lg">
+              {CITIZENSHIP_LABELS[citizenship] || CITIZENSHIP_LABELS.neither}
+            </span>
             <span className="text-xs text-slate-600">
               {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
@@ -203,7 +195,7 @@ export default function App() {
       {/* Tabs */}
       <div className="border-b border-white/5 px-6">
         <div className="max-w-7xl mx-auto flex gap-1">
-          {visibleTabs.map(tab => {
+          {TABS.map(tab => {
             const Icon = tab.icon;
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -227,7 +219,6 @@ export default function App() {
         {setupDone && !onboardingDismissed && !DEMO_MODE && (
           <div className="mb-5">
             <OnboardingBanner
-              citizenship={citizenship}
               onNavigate={setActiveTab}
               onDismiss={() => {
                 setOnboardingDismissed(true);
@@ -242,7 +233,7 @@ export default function App() {
             {showUsTracking && <StatusBar trips={usTrips} />}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               {showUsTracking && <YearlyChart trips={usTrips} />}
-              {showSchengen && <SchengenTracker trips={schengenTrips} onAdd={addSchengenTrip} citizenship={citizenship} />}
+              <SchengenTracker trips={schengenTrips} onAdd={addSchengenTrip} citizenship={citizenship} />
             </div>
             <TripPlanner usTrips={usTrips} schengenTrips={schengenTrips} citizenship={citizenship} />
             {/* Compact points summary */}

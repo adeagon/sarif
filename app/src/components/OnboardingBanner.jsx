@@ -1,19 +1,17 @@
 import { X } from 'lucide-react';
 
 const ALL_ITEMS = [
-  { id: 'trips',    tab: 'trips',    label: 'Add trip history',    hideFor: ['us', 'both'] },
-  { id: 'schengen', tab: 'schengen', label: 'Log Schengen stays',  hideFor: ['eu', 'both'] },
-  { id: 'points',   tab: 'points',   label: 'Set up points',       hideFor: [] },
-  { id: 'search',   tab: 'search',   label: 'Search award flights', hideFor: [] },
+  { id: 'trips',    tab: 'trips',    label: 'Add trips' },
+  { id: 'schengen', tab: 'schengen', label: 'Schengen stays' },
+  { id: 'points',   tab: 'points',   label: 'Set up points' },
+  { id: 'search',   tab: 'search',   label: 'Search award flights' },
 ];
 
-export default function OnboardingBanner({ citizenship, onNavigate, onDismiss }) {
-  const items = ALL_ITEMS.filter(i => !i.hideFor.includes(citizenship));
-
+export default function OnboardingBanner({ onNavigate, onDismiss }) {
   return (
     <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 px-5 py-4 flex items-center gap-3 flex-wrap">
       <span className="text-sm font-medium text-slate-200 mr-1">Get started:</span>
-      {items.map(item => (
+      {ALL_ITEMS.map(item => (
         <button
           key={item.id}
           onClick={() => onNavigate(item.tab)}
