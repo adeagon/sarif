@@ -24,7 +24,7 @@ import { Plane, BarChart2, CreditCard, Globe, Search, ChevronRight, Settings } f
 const TABS = [
   { id: 'overview',  label: 'Overview',        icon: BarChart2  },
   { id: 'search',    label: 'Award Search',     icon: Search     },
-  { id: 'trips',     label: 'Trip History',     icon: Plane      },
+  { id: 'trips',     label: 'Trips',             icon: Plane      },
   { id: 'schengen',  label: 'Schengen',         icon: Globe      },
   { id: 'points',    label: 'Points',            icon: CreditCard },
 ];
@@ -270,10 +270,15 @@ export default function App() {
         {activeTab === 'trips' && (
           <TripHistory
             trips={usTrips}
+            schengenTrips={schengenTrips}
             onAdd={addUsTrip}
+            onAddSchengen={addSchengenTrip}
             onRemove={removeUsTrip}
+            onRemoveSchengen={removeSchengenTrip}
             onClear={clearUsTrips}
+            onClearSchengen={clearSchengenTrips}
             homeAirport={homeAirport}
+            combined
           />
         )}
 

@@ -3,45 +3,74 @@ import { format, parseISO } from 'date-fns';
 import { computedTrips } from '../utils/calculations';
 import { Plus, X, Trash2 } from 'lucide-react';
 
-export default function TripHistory({ trips, onAdd, onRemove, onClear, homeAirport, zone = 'US' }) {
+export default function TripHistory({
+  trips, onAdd, onRemove, onClear, homeAirport, zone = 'US',
+  // Combined mode props (Trip History tab showing both zones)
+  combined = false, schengenTrips, onAddSchengen, onRemoveSchengen, onClearSchengen,
+}) {
   const [showForm,    setShowForm]    = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const defaultZone = combined ? 'US' : zone;
   const [form, setForm] = useState({
     arrival:   '',
     departure: '',
     entryPort: homeAirport || '',
-    zone,
+    zone: defaultZone,
   });
 
-  const computed = computedTrips(trips);
+  // In combined mode, merge both arrays with source tags for routing removes
+  const allTrips = combined
+    ? [
+        ...trips.map((t, i) => ({ ...t, _zone: 'US', _idx: i })),
+        ...(schengenTrips || []).map((t, i) => ({ ...t, _zone: 'Schengen', _idx: i })),
+      ]
+    : trips.map((t, i) => ({ ...t, _zone: zone, _idx: i }));
+
+  const computed = computedTrips(allTrips);
+  const totalTrips = allTrips.length;
 
   function handleSubmit(e) {
     e.preventDefault();
-    onAdd({ ...form, departure: form.departure || null });
-    setForm({ arrival: '', departure: '', entryPort: homeAirport || '', zone });
+    const tripData = { ...form, departure: form.departure || null };
+    if (combined && form.zone === 'Schengen') {
+      onAddSchengen(tripData);
+    } else {
+      onAdd(tripData);
+    }
+    setForm({ arrival: '', departure: '', entryPort: homeAirport || '', zone: defaultZone });
     setShowForm(false);
+  }
+
+  function handleRemove(trip) {
+    if (combined) {
+      if (trip._zone === 'Schengen') onRemoveSchengen(trip._idx);
+      else onRemove(trip._idx);
+    } else {
+      onRemove(trip._idx);
+    }
   }
 
   function handleClear() {
     if (confirmClear) {
       onClear();
+      if (combined && onClearSchengen) onClearSchengen();
       setConfirmClear(false);
     } else {
       setConfirmClear(true);
     }
   }
 
+  const title = combined ? 'Trip History' : (zone === 'Schengen' ? 'Schengen Trip History' : 'US Trip History');
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-white">
-          {zone === 'Schengen' ? 'Schengen Trip History' : 'US Trip History'}
-        </h3>
+        <h3 className="text-base font-semibold text-white">{title}</h3>
         <div className="flex items-center gap-2">
-          {trips.length > 0 && onClear && (
+          {totalTrips > 0 && onClear && (
             confirmClear ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-red-400">Clear all {trips.length} trips?</span>
+                <span className="text-xs text-red-400">Clear all {totalTrips} trips?</span>
                 <button
                   onClick={handleClear}
                   className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
@@ -128,13 +157,15 @@ export default function TripHistory({ trips, onAdd, onRemove, onClear, homeAirpo
         </form>
       )}
 
-      {trips.length === 0 ? (
+      {totalTrips === 0 ? (
         <div className="text-center py-10 space-y-3">
           <p className="text-sm text-slate-500">No trips recorded yet.</p>
           <p className="text-xs text-slate-600">
-            {zone === 'US'
-              ? <>Add your US entry/exit dates from your <a href="https://i94.cbp.dhs.gov" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">I-94 history</a>.</>
-              : 'Add your Schengen stays to track the 90/180-day limit.'
+            {combined
+              ? 'Add your US and Schengen trips to start tracking stay limits.'
+              : zone === 'US'
+                ? <>Add your US entry/exit dates from your <a href="https://i94.cbp.dhs.gov" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">I-94 history</a>.</>
+                : 'Add your Schengen stays to track the 90/180-day limit.'
             }
           </p>
         </div>
@@ -146,6 +177,7 @@ export default function TripHistory({ trips, onAdd, onRemove, onClear, homeAirpo
                 <th className="text-left pb-2 pr-4">Arrival</th>
                 <th className="text-left pb-2 pr-4">Departure</th>
                 <th className="text-left pb-2 pr-4">Duration</th>
+                {combined && <th className="text-left pb-2 pr-4">Zone</th>}
                 <th className="text-left pb-2 pr-4">Port</th>
                 <th className="text-left pb-2"></th>
               </tr>
@@ -168,12 +200,23 @@ export default function TripHistory({ trips, onAdd, onRemove, onClear, homeAirpo
                       {trip.durationDays}d
                     </span>
                   </td>
+                  {combined && (
+                    <td className="py-2.5 pr-4">
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                        trip._zone === 'Schengen'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-blue-500/15 text-blue-400'
+                      }`}>
+                        {trip._zone}
+                      </span>
+                    </td>
+                  )}
                   <td className="py-2.5 pr-4 text-xs text-slate-500 font-mono">
                     {trip.entryPort || homeAirport || '—'}
                   </td>
                   <td className="py-2.5">
                     <button
-                      onClick={() => onRemove(trips.length - 1 - i)}
+                      onClick={() => handleRemove(trip)}
                       className="text-slate-600 hover:text-red-400 transition-colors"
                     >
                       <X size={13} />
