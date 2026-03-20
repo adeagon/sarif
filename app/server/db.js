@@ -6,16 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH   = resolve(__dirname, 'data', 'sarif.db');
 
-// Ensure data directory exists
-mkdirSync(dirname(DB_PATH), { recursive: true });
-
-const db = new Database(DB_PATH);
-
-// Enable WAL for better concurrent read performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-db.exec(`
+const DDL = `
   CREATE TABLE IF NOT EXISTS alerts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT    NOT NULL DEFAULT '',
@@ -65,6 +56,19 @@ db.exec(`
     missed_polls  INTEGER NOT NULL DEFAULT 0,
     UNIQUE(alert_id, fingerprint)
   );
-`);
+`;
+
+export function createDatabase(path = DB_PATH) {
+  if (path !== ':memory:') {
+    mkdirSync(dirname(path), { recursive: true });
+  }
+  const database = new Database(path);
+  database.pragma('journal_mode = WAL');
+  database.pragma('foreign_keys = ON');
+  database.exec(DDL);
+  return database;
+}
+
+const db = createDatabase();
 
 export default db;

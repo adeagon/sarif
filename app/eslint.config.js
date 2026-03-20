@@ -33,4 +33,11 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  // Test files: Node + browser globals (global, process, etc.)
+  {
+    files: ['tests/**/*.{js,jsx}', 'vitest.config.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
 ])

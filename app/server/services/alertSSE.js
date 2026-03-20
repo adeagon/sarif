@@ -40,3 +40,8 @@ export function broadcastSSE(data) {
     try { res.write(payload); } catch { clients.delete(res); }
   }
 }
+
+/** Reset all connected clients — for testing only. */
+export function _resetClients() {
+  clients.clear();
+}

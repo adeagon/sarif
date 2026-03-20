@@ -3,11 +3,14 @@ import { broadcastSSE } from './alertSSE.js';
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes — matches index.js
 
+// Per-alert concurrency guard
+export const runningAlerts = new Set();
+
 /**
  * Compute a stable fingerprint for a result row.
  * Prefer the availability ID from seats.aero if present.
  */
-function fingerprint(alertId, row, cabin) {
+export function fingerprint(alertId, row, cabin) {
   const availId = row.ID || row.id || row.AvailabilityID;
   if (availId) return `${alertId}-${availId}`;
   const miles  = row[`${cabin}MileageCostRaw`] ?? '';
@@ -21,7 +24,7 @@ function fingerprint(alertId, row, cabin) {
 /**
  * Filter a seats.aero result row against an alert's criteria.
  */
-function matchesCriteria(row, alert) {
+export function matchesCriteria(row, alert) {
   const { cabin, max_miles, max_taxes, min_seats, direct_only, programs } = alert;
 
   // Must have at least 1 seat
@@ -90,36 +93,43 @@ async function fetchResults(alert, searchCache, seatsApiKey) {
   return { data, fromCache: false };
 }
 
-const insertMatch = db.prepare(`
-  INSERT INTO alert_matches
-    (alert_id, fingerprint, source, date, cabin, miles, taxes, seats, direct, airlines, availability_id, status)
-  VALUES
-    (@alert_id, @fingerprint, @source, @date, @cabin, @miles, @taxes, @seats, @direct, @airlines, @availability_id, 'new')
-  ON CONFLICT(alert_id, fingerprint) DO UPDATE SET
-    last_seen_at  = datetime('now'),
-    missed_polls  = 0,
-    status        = CASE WHEN status = 'dismissed' THEN 'dismissed' ELSE 'active' END
-`);
-
-const updateAlertTimestamps = db.prepare(`
-  UPDATE alerts
-  SET last_run_at   = datetime('now'),
-      last_match_at = CASE WHEN @had_match THEN datetime('now') ELSE last_match_at END
-  WHERE id = @id
-`);
-
-const insertRun = db.prepare(`
-  INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
-  VALUES (@alert_id, @status, @matches_new, @matches_seen, @error)
-`);
-
-const getAlert = db.prepare(`SELECT * FROM alerts WHERE id = ?`);
-
 /**
  * Evaluate a single alert against live/cached seats.aero data.
+ * @param {number} alertId
+ * @param {Map} searchCache
+ * @param {string|undefined} seatsApiKey
+ * @param {{ database?: import('better-sqlite3').Database, broadcast?: Function }} [opts]
  * @returns {{ matchesNew: number, matchesSeen: number, error?: string }}
  */
-export async function evaluateAlert(alertId, searchCache, seatsApiKey) {
+export async function evaluateAlert(alertId, searchCache, seatsApiKey, { database = db, broadcast = broadcastSSE } = {}) {
+  if (runningAlerts.has(alertId)) throw new Error('Alert already running');
+  runningAlerts.add(alertId);
+
+  const insertMatch = database.prepare(`
+    INSERT INTO alert_matches
+      (alert_id, fingerprint, source, date, cabin, miles, taxes, seats, direct, airlines, availability_id, status)
+    VALUES
+      (@alert_id, @fingerprint, @source, @date, @cabin, @miles, @taxes, @seats, @direct, @airlines, @availability_id, 'new')
+    ON CONFLICT(alert_id, fingerprint) DO UPDATE SET
+      last_seen_at  = datetime('now'),
+      missed_polls  = 0,
+      status        = CASE WHEN status = 'dismissed' THEN 'dismissed' ELSE 'active' END
+  `);
+
+  const updateAlertTimestamps = database.prepare(`
+    UPDATE alerts
+    SET last_run_at   = datetime('now'),
+        last_match_at = CASE WHEN @had_match THEN datetime('now') ELSE last_match_at END
+    WHERE id = @id
+  `);
+
+  const insertRun = database.prepare(`
+    INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
+    VALUES (@alert_id, @status, @matches_new, @matches_seen, @error)
+  `);
+
+  const getAlert = database.prepare(`SELECT * FROM alerts WHERE id = ?`);
+
   const alert = getAlert.get(alertId);
   if (!alert) throw new Error(`Alert ${alertId} not found`);
 
@@ -130,14 +140,14 @@ export async function evaluateAlert(alertId, searchCache, seatsApiKey) {
   try {
     const { data } = await fetchResults(alert, searchCache, seatsApiKey);
 
-    const runInserts = db.transaction(() => {
+    const runInserts = database.transaction(() => {
       for (const row of data) {
         if (!matchesCriteria(row, alert)) continue;
 
         const fp = fingerprint(alertId, row, alert.cabin);
         const availId = row.ID || row.id || row.AvailabilityID || null;
 
-        const prev = db.prepare('SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?').get(alertId, fp);
+        const prev = database.prepare('SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?').get(alertId, fp);
 
         insertMatch.run({
           alert_id:        alertId,
@@ -155,8 +165,7 @@ export async function evaluateAlert(alertId, searchCache, seatsApiKey) {
 
         if (!prev) {
           matchesNew++;
-          // Broadcast SSE for new match
-          broadcastSSE({
+          broadcast({
             type:        'match',
             alertId,
             alertName:   alert.name || `${alert.origin}→${alert.destination}`,
@@ -189,6 +198,7 @@ export async function evaluateAlert(alertId, searchCache, seatsApiKey) {
     updateAlertTimestamps.run({ id: alertId, had_match: 0 });
     throw err;
   } finally {
+    runningAlerts.delete(alertId);
     insertRun.run({
       alert_id:     alertId,
       status:       runError ? 'error' : 'ok',
