@@ -79,7 +79,6 @@ describe('evaluateAlert()', () => {
     const params = new URLSearchParams({
       origin_airport: 'JFK',
       destination_airport: 'NRT',
-      cabin: 'J',
       take: '300',
       start_date: '2026-06-01',
       end_date: '2026-06-30',
@@ -97,7 +96,6 @@ describe('evaluateAlert()', () => {
     const params = new URLSearchParams({
       origin_airport: 'JFK',
       destination_airport: 'NRT',
-      cabin: 'J',
       take: '300',
       start_date: '2026-06-01',
       end_date: '2026-06-30',

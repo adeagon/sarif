@@ -65,7 +65,6 @@ async function fetchResults(alert, searchCache, seatsApiKey) {
   const params = new URLSearchParams({
     origin_airport:      alert.origin,
     destination_airport: alert.destination,
-    cabin:               alert.cabin,
     take:                '300',
   });
   if (alert.date_from) params.set('start_date', alert.date_from);
