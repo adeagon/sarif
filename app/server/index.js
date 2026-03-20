@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import alertsRouter from './routes/alerts.js';
+import { startPolling } from './services/alertScheduler.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -8,9 +10,14 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({ origin: process.env.CORS_ORIGIN || /localhost:\d+/ }));
 app.use(express.json());
 
-// ── Seats.aero proxy ─────────────────────────────────────────────────────────
-
+// ── Shared search cache (alerts + manual search share this) ──────────────────
 const searchCache = new Map(); // key → { data, ts }
+app.set('searchCache', searchCache);
+
+// ── Alerts router ─────────────────────────────────────────────────────────────
+app.use('/api/alerts', alertsRouter);
+
+// ── Seats.aero proxy ─────────────────────────────────────────────────────────
 const CACHE_TTL   = 10 * 60 * 1000; // 10 minutes
 
 app.get('/api/seats/search', async (req, res) => {
@@ -204,6 +211,7 @@ const server = app.listen(PORT, () => {
   if (!process.env.SEATS_API_KEY) {
     console.log('  ⚠ SEATS_API_KEY not set — award search disabled');
   }
+  startPolling(searchCache, process.env.SEATS_API_KEY);
 });
 
 server.on('error', (err) => {

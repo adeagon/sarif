@@ -1,73 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, ExternalLink, Zap, DollarSign, RefreshCw, ArrowLeftRight, Calendar, Plus, X } from 'lucide-react';
-
-const PROGRAMS = {
-  flyingblue:     { name: 'Flying Blue',          transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.flyingblue.com' },
-  aeroplan:       { name: 'Aeroplan',              transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://aeroplan.com' },
-  aircanada:      { name: 'Aeroplan',              transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://aeroplan.com' },
-  united:         { name: 'United MileagePlus',    transferFrom: ['Chase UR'],            bookUrl: 'https://www.united.com' },
-  lifemiles:      { name: 'Avianca LifeMiles',     transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.lifemiles.com' },
-  delta:          { name: 'Delta SkyMiles',        transferFrom: ['Amex MR'],             bookUrl: 'https://www.delta.com' },
-  american:       { name: 'AAdvantage',            transferFrom: [],                      bookUrl: 'https://www.aa.com' },
-  british:        { name: 'British Avios',         transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.britishairways.com' },
-  virginatlantic: { name: 'Virgin Atlantic',       transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.virginatlantic.com' },
-  virgin:         { name: 'Virgin Atlantic',       transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.virginatlantic.com' },
-  emirates:       { name: 'Emirates Skywards',     transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.emirates.com' },
-  turkish:        { name: 'Turkish Miles&Smiles',  transferFrom: [],                      bookUrl: 'https://www.turkishairlines.com' },
-  lufthansa:      { name: 'Lufthansa Miles&More',  transferFrom: ['Amex MR'],             bookUrl: 'https://www.miles-and-more.com' },
-  singapore:      { name: 'Singapore KrisFlyer',   transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.singaporeair.com' },
-  alaska:         { name: 'Alaska Mileage Plan',   transferFrom: [],                      bookUrl: 'https://www.alaskaair.com' },
-  cathay:         { name: 'Asia Miles (Cathay)',   transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.cathaypacific.com' },
-  smiles:         { name: 'GOL Smiles',            transferFrom: ['Amex MR'],             bookUrl: 'https://www.smiles.com.br' },
-  eurobonus:      { name: 'SAS EuroBonus',         transferFrom: ['Amex MR'],             bookUrl: 'https://www.flysas.com' },
-  iberia:         { name: 'Iberia Avios',          transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.iberia.com' },
-  airindia:       { name: 'Air India Flying Returns', transferFrom: ['Amex MR'],           bookUrl: 'https://www.airindia.com/flying-returns' },
-  jetblue:        { name: 'JetBlue TrueBlue',      transferFrom: ['Amex MR', 'Chase UR'], bookUrl: 'https://www.jetblue.com/trueblue' },
-  finnair:        { name: 'Finnair Plus',           transferFrom: ['Amex MR'],             bookUrl: 'https://www.finnair.com/finnairplus' },
-  etihad:         { name: 'Etihad Guest',           transferFrom: ['Amex MR'],             bookUrl: 'https://www.etihad.com/etihadguest' },
-  velocity:       { name: 'Virgin Australia Velocity', transferFrom: [],                   bookUrl: 'https://www.virginaustralia.com/velocity' },
-  copa:           { name: 'Copa ConnectMiles',      transferFrom: [],                      bookUrl: 'https://www.copaair.com/connectmiles' },
-  azul:           { name: 'Azul TudoAzul',          transferFrom: ['Amex MR'],             bookUrl: 'https://www.voeazul.com.br/tudoazul' },
-};
-
-// IATA carrier code → readable name
-const CARRIERS = {
-  // Europe
-  AF: 'Air France', KL: 'KLM', OS: 'Austrian', LH: 'Lufthansa', LX: 'Swiss',
-  SN: 'Brussels Airlines', AY: 'Finnair', SK: 'SAS', LO: 'LOT Polish',
-  TP: 'TAP Portugal', IB: 'Iberia', VY: 'Vueling', VS: 'Virgin Atlantic',
-  BA: 'British Airways', FR: 'Ryanair', U2: 'easyJet', W6: 'Wizz Air',
-  CL: 'Lufthansa CityLine', EN: 'Air Dolomiti', EW: 'Eurowings', DE: 'Condor',
-  BT: 'Air Baltic', WK: 'Edelweiss', '2L': 'Helvetic', LG: 'Luxair',
-  PC: 'Pegasus', A3: 'Aegean', OA: 'Olympic', PS: 'UIA', RO: 'TAROM',
-  '4U': 'Germanwings', X3: 'TUI fly', TF: 'Braathens',
-  // North America
-  AC: 'Air Canada', UA: 'United', DL: 'Delta', AA: 'American', B6: 'JetBlue',
-  WN: 'Southwest', AS: 'Alaska', WS: 'WestJet', NK: 'Spirit', F9: 'Frontier',
-  Z0: 'Norse Atlantic', LY: 'El Al',
-  // Middle East & Africa
-  TK: 'Turkish', EK: 'Emirates', EY: 'Etihad', QR: 'Qatar',
-  SV: 'Saudi', GF: 'Gulf Air', WY: 'Oman Air', ME: 'MEA',
-  RJ: 'Royal Jordanian', MS: 'EgyptAir', ET: 'Ethiopian', KQ: 'Kenya',
-  // Asia Pacific
-  SQ: 'Singapore', NH: 'ANA', JL: 'Japan', CX: 'Cathay',
-  KE: 'Korean Air', OZ: 'Asiana', TG: 'Thai', GA: 'Garuda',
-  MH: 'Malaysia', CI: 'China Airlines', CA: 'Air China',
-  CZ: 'China Southern', MU: 'China Eastern', AI: 'Air India',
-  VN: 'Vietnam', BR: 'EVA Air', '5J': 'Cebu Pacific',
-  // Latin America
-  AV: 'Avianca', LA: 'LATAM', G3: 'Gol', AR: 'Aerolíneas', CM: 'Copa',
-  AM: 'Aeromexico', Y4: 'Volaris',
-};
-
-// Returns array of { code, name } objects
-function parseAirlines(raw) {
-  if (!raw) return [];
-  return raw.split(',').map(code => {
-    const trimmed = code.trim();
-    return { code: trimmed, name: CARRIERS[trimmed] || trimmed };
-  });
-}
+import { Search, ExternalLink, Zap, DollarSign, RefreshCw, ArrowLeftRight, Calendar, Plus, X, Bell } from 'lucide-react';
+import { PROGRAMS, CARRIERS, CABINS, PROGRAM_KEY_MAP, TRANSFER_TO_KEYS, parseAirlines, bookLink, fmt, fmtDate, fmtTaxes, cppColor } from '../utils/awardConstants.js';
 
 function AirlineBadges({ raw }) {
   const airlines = parseAirlines(raw);
@@ -83,85 +16,6 @@ function AirlineBadges({ raw }) {
       ))}
     </div>
   );
-}
-
-const CABINS = [
-  { key: 'J', label: 'Business' },
-  { key: 'W', label: 'Premium Eco' },
-  { key: 'Y', label: 'Economy' },
-  { key: 'F', label: 'First' },
-];
-
-// Maps user-facing program names to seats.aero source keys
-const PROGRAM_KEY_MAP = {
-  'United MileagePlus':        'united',
-  'Delta SkyMiles':            'delta',
-  'American AAdvantage':       'american',
-  'British Airways Avios':     'british',
-  'Aeroplan':                  'aeroplan',
-  'Air Canada Aeroplan':       'aeroplan',
-  'Flying Blue':               'flyingblue',
-  'Virgin Atlantic':           'virginatlantic',
-  'Virgin Atlantic Flying Club': 'virginatlantic',
-  'Emirates Skywards':         'emirates',
-  'Singapore KrisFlyer':       'singapore',
-  'Turkish Miles&Smiles':      'turkish',
-  'Avianca LifeMiles':         'lifemiles',
-  'Alaska Mileage Plan':       'alaska',
-  'Iberia Avios':              'iberia',
-  'Finnair Plus':              'finnair',
-  'Etihad Guest':              'etihad',
-};
-
-// Transferable currencies → seats.aero program keys
-const TRANSFER_TO_KEYS = {
-  'Amex Membership Rewards': ['flyingblue','aeroplan','lifemiles','british','virginatlantic','emirates','singapore','delta','lufthansa','etihad','finnair','iberia','jetblue','airindia','azul','eurobonus'],
-  'Chase Ultimate Rewards':  ['flyingblue','aeroplan','united','british','virginatlantic','emirates','singapore','iberia','jetblue'],
-  'Citi ThankYou Points':    ['flyingblue','aeroplan','lifemiles','turkish','singapore','jetblue','cathay'],
-  'Capital One Miles':       ['flyingblue','aeroplan','turkish','singapore','british','finnair','cathay','lifemiles','eurobonus'],
-  'Bilt Rewards':            ['flyingblue','aeroplan','united','british','virginatlantic','emirates','singapore','alaska','iberia'],
-};
-
-function bookLink(source, orig, dest) {
-  switch (source) {
-    case 'united':         return `https://www.united.com/en/us/flights/book/options?f=${orig}&t=${dest}&tripType=oneWay&cabinType=business`;
-    case 'flyingblue':     return 'https://www.airfrance.com/';
-    case 'aeroplan':
-    case 'aircanada':      return 'https://aeroplan.com/';
-    case 'lifemiles':      return 'https://www.lifemiles.com/';
-    case 'virginatlantic':
-    case 'virgin':         return 'https://www.virginatlantic.com/';
-    case 'british':        return 'https://www.britishairways.com/';
-    case 'lufthansa':      return 'https://www.miles-and-more.com/';
-    case 'delta':          return 'https://www.delta.com/';
-    case 'american':       return 'https://www.aa.com/';
-    case 'turkish':        return 'https://www.turkishairlines.com/';
-    case 'emirates':       return 'https://www.emirates.com/';
-    case 'singapore':      return 'https://www.singaporeair.com/';
-    case 'eurobonus':      return 'https://www.flysas.com/';
-    default:               return PROGRAMS[source]?.bookUrl || '#';
-  }
-}
-
-function fmt(miles) {
-  if (!miles || miles === 0) return null;
-  return (miles / 1000).toFixed(1).replace('.0', '') + 'k';
-}
-
-function fmtDate(d) {
-  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function fmtTaxes(raw) {
-  if (!raw) return null;
-  return '$' + Math.round(raw / 100);
-}
-
-function cppColor(cpp) {
-  if (cpp >= 8) return { text: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30', label: 'Excellent' };
-  if (cpp >= 6) return { text: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30',       label: 'Good' };
-  if (cpp >= 4) return { text: 'text-yellow-400',  bg: 'bg-yellow-500/15 border-yellow-500/30',   label: 'OK' };
-  return          { text: 'text-red-400',    bg: 'bg-red-500/15 border-red-500/30',       label: 'Poor — consider cash' };
 }
 
 function CabinFareRow({ label, prices, loading, highlight }) {
@@ -382,7 +236,7 @@ function loadSavedRoutes(home) {
   return [];
 }
 
-export default function AwardSearch({ homeAirport = 'JFK', points = [], destinations = {} }) {
+export default function AwardSearch({ homeAirport = 'JFK', points = [], destinations = {}, onCreateAlert }) {
   const [savedRoutes, setSavedRoutes] = useState(() => loadSavedRoutes(homeAirport));
   const [addingRoute, setAddingRoute] = useState(false);
   const [newRouteDest, setNewRouteDest] = useState('');
@@ -563,6 +417,15 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             <h3 className="text-base font-semibold text-white">
               Award Search <span className="text-xs font-normal text-slate-500 ml-1">powered by Seats.aero</span>
             </h3>
+            <div className="flex items-center gap-2">
+              {onCreateAlert && (
+                <button
+                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo })}
+                  title="Create an alert for this route"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">
+                  <Bell size={12} /> Alert
+                </button>
+              )}
             <div className="flex items-center gap-1">
               <button onClick={() => setIsRoundTrip(false)}
                 className={`text-xs px-3 py-1.5 rounded-l-lg border transition-colors ${
@@ -576,6 +439,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
                 }`}>
                 <ArrowLeftRight size={11} /> Round trip
               </button>
+            </div>
             </div>
           </div>
 
