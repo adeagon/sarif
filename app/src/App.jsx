@@ -19,14 +19,16 @@ import AwardSearch from './components/AwardSearch';
 import TripPlanner from './components/TripPlanner';
 import SetupModal from './components/SetupModal';
 import OnboardingBanner from './components/OnboardingBanner';
-import { Plane, BarChart2, CreditCard, Globe, Search, ChevronRight, Settings } from 'lucide-react';
+import AlertManager from './components/AlertManager';
+import { Plane, BarChart2, CreditCard, Globe, Search, ChevronRight, Settings, Bell } from 'lucide-react';
 
 const TABS = [
-  { id: 'overview',  label: 'Overview',        icon: BarChart2  },
-  { id: 'search',    label: 'Award Search',     icon: Search     },
-  { id: 'trips',     label: 'Trips',             icon: Plane      },
-  { id: 'schengen',  label: 'Schengen',         icon: Globe      },
-  { id: 'points',    label: 'Points',            icon: CreditCard },
+  { id: 'overview',  label: 'Overview',      icon: BarChart2  },
+  { id: 'search',    label: 'Award Search',   icon: Search     },
+  { id: 'alerts',    label: 'Alerts',         icon: Bell       },
+  { id: 'trips',     label: 'Trips',          icon: Plane      },
+  { id: 'schengen',  label: 'Schengen',       icon: Globe      },
+  { id: 'points',    label: 'Points',         icon: CreditCard },
 ];
 
 // Citizenship controls which *tracking widgets* show, not which tabs are visible.
@@ -45,6 +47,7 @@ export default function App() {
   const [points,           setPoints]           = useState(() => DEMO_MODE ? POINTS            : loadState('points',           POINTS));
   const [userDestinations, setUserDestinations] = useState(() => DEMO_MODE ? DEFAULT_USER_DESTINATIONS : loadState('userDestinations', DEFAULT_USER_DESTINATIONS));
   const [activeTab,        setActiveTab]        = useState('overview');
+  const [alertPrefill,     setAlertPrefill]     = useState(null);
   const [homeAirport,      setHomeAirport]      = useState(() => DEMO_MODE ? 'JFK' : (localStorage.getItem('sarif_home') || ''));
   const [citizenship,      setCitizenship]      = useState(() => DEMO_MODE ? 'neither' : (localStorage.getItem('sarif_citizenship') || 'neither'));
   const [setupDone,        setSetupDone]        = useState(() => DEMO_MODE ? false : !!localStorage.getItem('sarif_setup_done'));
@@ -269,7 +272,16 @@ export default function App() {
         )}
 
         {activeTab === 'search' && (
-          <AwardSearch homeAirport={homeAirport} points={points} destinations={{ ...DESTINATIONS, ...Object.fromEntries(userDestinations.map(d => [d.key, d])) }} />
+          <AwardSearch
+            homeAirport={homeAirport}
+            points={points}
+            destinations={{ ...DESTINATIONS, ...Object.fromEntries(userDestinations.map(d => [d.key, d])) }}
+            onCreateAlert={(prefill) => { setAlertPrefill(prefill); setActiveTab('alerts'); }}
+          />
+        )}
+
+        {activeTab === 'alerts' && (
+          <AlertManager alertPrefill={alertPrefill} />
         )}
 
         {activeTab === 'trips' && (

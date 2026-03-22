@@ -12,3 +12,6 @@ node_modules/
 
 # But allow committed screenshots in screenshots/
 !screenshots/
+
+# SQLite database
+app/server/data/

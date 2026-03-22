@@ -6,7 +6,7 @@
 
 <p align="center">
   Travel intelligence dashboard for frequent flyers and digital nomads.
-  <br>Award search, points tracking, US and Schengen stay counters. Runs locally.
+  <br>Award search, award alerts, points tracking, US and Schengen stay counters. Runs locally.
 </p>
 
 ## Quickstart
@@ -41,6 +41,8 @@ Add keys to `.env` and restart `npm run dev` — it runs both the frontend and t
 
 **Award Search** pulls live award availability from [seats.aero](https://seats.aero), which aggregates availability across 30+ airline loyalty programs (United, Aeroplan, Flying Blue, etc.) into one API. Sarif shows these results alongside cash prices from [Sky Scrapper](https://rapidapi.com/apiheya/api/sky-scrapper) (business/premium economy) and [Travelpayouts](https://www.travelpayouts.com/developers/api) (economy), so you can compare points vs. dollars on the same screen.
 
+**Award Alerts** monitors routes in the background and notifies you in real time when seats matching your criteria become available — filter by cabin, max miles, max taxes, direct-only, date range, and specific programs. Alerts are evaluated every 15 minutes via seats.aero and pushed to the browser over SSE.
+
 **Points & Miles** tracks balances across all your programs and shows which transferable currencies (Amex MR, Chase UR, etc.) can move where.
 
 **US Presence Tracker** counts rolling 180-day and 365-day totals, runs the IRS Substantial Presence Test (the 3-year weighted formula), and suggests exit dates so you don't accidentally trigger tax residency.
@@ -64,7 +66,7 @@ All data is stored in your browser's localStorage and never leaves your machine.
 
 ## Stack
 
-React 19, Vite, Tailwind CSS, Recharts, Express (API proxy), localStorage
+React 19, Vite, Tailwind CSS, Recharts, Express, SQLite (better-sqlite3), localStorage
 
 ## License
 
