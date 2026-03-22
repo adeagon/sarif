@@ -257,6 +257,54 @@ describe('AlertManager — Run Now', () => {
     await user.click(screen.getByTitle(/run now/i));
     await waitFor(() => expect(screen.getByText(/api key missing/i)).toBeInTheDocument());
   });
+
+  it('run with RATE_LIMITED → shows rate limit message', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [makeAlert()] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ error: true, code: 'RATE_LIMITED', message: 'Rate limited' }) });
+
+    const user = userEvent.setup();
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/JFK → NRT/));
+    await user.click(screen.getByTitle(/run now/i));
+    await waitFor(() => expect(screen.getByText(/rate limited/i)).toBeInTheDocument());
+  });
+
+  it('run with ALREADY_RUNNING → shows already running message', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [makeAlert()] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ error: true, code: 'ALREADY_RUNNING', message: 'Already running' }) });
+
+    const user = userEvent.setup();
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/JFK → NRT/));
+    await user.click(screen.getByTitle(/run now/i));
+    await waitFor(() => expect(screen.getByText(/already running/i)).toBeInTheDocument());
+  });
+
+  it('run with UPSTREAM_ERROR → shows error message from response', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [makeAlert()] })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ error: true, code: 'UPSTREAM_ERROR', message: 'Connection refused' }) });
+
+    const user = userEvent.setup();
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/JFK → NRT/));
+    await user.click(screen.getByTitle(/run now/i));
+    await waitFor(() => expect(screen.getByText(/connection refused/i)).toBeInTheDocument());
+  });
+
+  it('network failure shows connection error message', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [makeAlert()] })
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    const user = userEvent.setup();
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/JFK → NRT/));
+    await user.click(screen.getByTitle(/run now/i));
+    await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeInTheDocument());
+  });
 });
 
 describe('AlertManager — SSE', () => {
@@ -312,6 +360,23 @@ describe('AlertManager — sub-components', () => {
     // Expand alert
     await user.click(screen.getByTitle(/view matches/i));
     await waitFor(() => expect(screen.getByText('New')).toBeInTheDocument());
+  });
+
+  it('transferable=1 shows "Transferable only" badge', async () => {
+    global.fetch = mockFetch({
+      'GET /api/alerts': { ok: true, json: async () => [makeAlert({ transferable: 1 })] },
+    });
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/transferable only/i));
+  });
+
+  it('transferable=0 does not show "Transferable only" badge', async () => {
+    global.fetch = mockFetch({
+      'GET /api/alerts': { ok: true, json: async () => [makeAlert({ transferable: 0 })] },
+    });
+    render(<AlertManager />);
+    await waitFor(() => screen.getByText(/JFK → NRT/));
+    expect(screen.queryByText(/transferable only/i)).not.toBeInTheDocument();
   });
 
   it('disabled alert renders with muted opacity class', async () => {

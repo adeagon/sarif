@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesCriteria } from '../../server/services/alertEvaluator.js';
+import { matchesCriteria, isTransferableProgram } from '../../server/services/alertEvaluator.js';
 
 const BASE_ALERT = {
   cabin: 'J',
@@ -95,5 +95,35 @@ describe('matchesCriteria()', () => {
 
   it('ignores max_taxes when null', () => {
     expect(matchesCriteria({ ...BASE_ROW, JTotalTaxesRaw: 99999 }, { ...BASE_ALERT, max_taxes: null })).toBe(true);
+  });
+
+  it('rejects non-transferable program (american) when transferable=1', () => {
+    expect(matchesCriteria({ ...BASE_ROW, Source: 'american' }, { ...BASE_ALERT, transferable: 1 })).toBe(false);
+  });
+
+  it('accepts transferable program (aeroplan) when transferable=1', () => {
+    expect(matchesCriteria({ ...BASE_ROW, Source: 'aeroplan' }, { ...BASE_ALERT, transferable: 1 })).toBe(true);
+  });
+
+  it('accepts non-transferable program (american) when transferable=0', () => {
+    expect(matchesCriteria({ ...BASE_ROW, Source: 'american' }, { ...BASE_ALERT, transferable: 0 })).toBe(true);
+  });
+
+  it('rejects unknown program when transferable=1', () => {
+    expect(matchesCriteria({ ...BASE_ROW, Source: 'unknownprogram' }, { ...BASE_ALERT, transferable: 1 })).toBe(false);
+  });
+});
+
+describe('isTransferableProgram()', () => {
+  it('returns true for aeroplan (has transferFrom)', () => {
+    expect(isTransferableProgram('aeroplan')).toBe(true);
+  });
+
+  it('returns false for american (empty transferFrom)', () => {
+    expect(isTransferableProgram('american')).toBe(false);
+  });
+
+  it('returns false for unknown source key', () => {
+    expect(isTransferableProgram('unknownxyz')).toBe(false);
   });
 });

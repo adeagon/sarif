@@ -1,5 +1,5 @@
 import db from '../db.js';
-import { evaluateAlert } from './alertEvaluator.js';
+import { fetchResults, evaluateRowsForAlert } from './alertEvaluator.js';
 
 const DEFAULT_POLL_MS = 15 * 60 * 1000; // 15 minutes
 const STAGGER_MS      = 2_000;           // 2 s between query groups
@@ -18,11 +18,18 @@ export function startPolling(searchCache, seatsApiKey) {
 
 /**
  * Run a single poll cycle.
+ * Groups alerts by route/dates (cabin omitted — fetch is cabin-agnostic).
+ * Fetches once per group, evaluates each alert in the group against the shared rows.
+ *
  * @param {Map} searchCache
  * @param {string|undefined} seatsApiKey
- * @param {{ database?: import('better-sqlite3').Database, evaluate?: Function }} [opts]
+ * @param {{ database?: import('better-sqlite3').Database, fetchFn?: Function, evaluateFn?: Function }} opts
  */
-export async function runPollCycle(searchCache, seatsApiKey, { database = db, evaluate = evaluateAlert } = {}) {
+export async function runPollCycle(searchCache, seatsApiKey, {
+  database   = db,
+  fetchFn    = fetchResults,
+  evaluateFn = evaluateRowsForAlert,
+} = {}) {
   const now = new Date().toISOString().slice(0, 10);
 
   // Auto-disable alerts whose date_to has passed
@@ -31,53 +38,78 @@ export async function runPollCycle(searchCache, seatsApiKey, { database = db, ev
   const alerts = database.prepare(`SELECT * FROM alerts WHERE enabled = 1`).all();
   if (!alerts.length) return;
 
-  // Group alerts by (origin, destination, date_from, date_to, cabin) to share API calls
+  // Group by route/dates only — cabin intentionally omitted, fetch is cabin-agnostic
   const groups = new Map();
   for (const alert of alerts) {
-    const key = `${alert.origin}|${alert.destination}|${alert.cabin}|${alert.date_from || ''}|${alert.date_to || ''}`;
+    const key = `${alert.origin}|${alert.destination}|${alert.date_from || ''}|${alert.date_to || ''}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(alert);
   }
 
+  const allGroups = [...groups.values()];
   let rateLimited = false;
 
-  for (const [, groupAlerts] of groups) {
-    if (rateLimited) break;
+  for (const groupAlerts of allGroups) {
+    // Rate limit already hit — record skipped for remaining groups and move on
+    if (rateLimited) {
+      for (const alert of groupAlerts) {
+        database.prepare(`
+          INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
+          VALUES (?, 'skipped', 0, 0, 'Rate limited — skipped')
+        `).run(alert.id);
+      }
+      continue;
+    }
 
     // Stagger between groups
     await new Promise(resolve => setTimeout(resolve, STAGGER_MS));
 
-    for (const alert of groupAlerts) {
-      if (rateLimited) break;
-      try {
-        const result = await evaluate(alert.id, searchCache, seatsApiKey);
-        console.log(`[alerts] poll alert#${alert.id} — ${result.matchesNew} new, ${result.matchesSeen} seen`);
-      } catch (err) {
-        if (err.code === 'RATE_LIMITED') {
-          rateLimited = true;
-          console.warn('[alerts] rate limited by seats.aero — skipping remaining groups');
-          // Mark remaining alerts in this cycle as skipped
+    // Fetch once for the whole group using the first alert as representative
+    const representative = groupAlerts[0];
+    let rows;
+    let fetchFailed = false;
+
+    try {
+      const result = await fetchFn(representative, searchCache, seatsApiKey);
+      rows = result.data;
+    } catch (err) {
+      fetchFailed = true;
+      if (err.code === 'RATE_LIMITED') {
+        rateLimited = true;
+        console.warn('[alerts] rate limited by seats.aero — skipping remaining groups');
+        for (const alert of groupAlerts) {
           database.prepare(`
             INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
             VALUES (?, 'skipped', 0, 0, 'Rate limited — skipped')
           `).run(alert.id);
-        } else {
-          console.error(`[alerts] poll error alert#${alert.id}:`, err.message);
         }
+      } else {
+        // Non-rate-limit fetch error: record skipped for this group, continue to next
+        console.error(`[alerts] fetch error ${representative.origin}→${representative.destination}:`, err.message);
+        for (const alert of groupAlerts) {
+          database.prepare(`
+            INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
+            VALUES (?, 'skipped', 0, 0, ?)
+          `).run(alert.id, `Fetch error: ${err.message}`);
+        }
+      }
+    }
+
+    if (fetchFailed) continue;
+
+    // Fetch succeeded — evaluate each alert in the group against the shared rows
+    for (const alert of groupAlerts) {
+      try {
+        const result = evaluateFn(alert, rows, { database });
+        const { matchesNew = 0, matchesSeen = 0 } = result || {};
+        console.log(`[alerts] poll alert#${alert.id} — ${matchesNew} new, ${matchesSeen} seen`);
+      } catch (err) {
+        console.error(`[alerts] eval error alert#${alert.id}:`, err.message);
+        // evaluateRowsForAlert records its own error run in its finally block
       }
     }
   }
 
-  // Increment missed_polls for matches not seen in this cycle, expire after 3 misses
-  database.prepare(`
-    UPDATE alert_matches
-    SET missed_polls = missed_polls + 1
-    WHERE status NOT IN ('dismissed', 'expired')
-      AND last_seen_at < datetime('now', '-${Math.ceil(DEFAULT_POLL_MS / 60000)} minutes')
-  `).run();
-
-  database.prepare(`
-    UPDATE alert_matches SET status = 'expired'
-    WHERE status = 'active' AND missed_polls >= 3
-  `).run();
+  const status = rateLimited ? 'rate limited' : 'ok';
+  console.log(`[alerts] poll complete — ${alerts.length} alerts, ${allGroups.length} groups, ${status}`);
 }

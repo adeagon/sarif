@@ -3,7 +3,8 @@ import express from 'express';
 import request from 'supertest';
 import { createTestDb } from '../helpers/createTestDb.js';
 import { createAlertsRouter } from '../../server/routes/alerts.js';
-import { mockFetchSuccess, SEATS_API_SUCCESS, SEATS_API_EMPTY } from '../helpers/fixtures.js';
+import { mockFetchSuccess, mockFetch429, mockFetch500, SEATS_API_SUCCESS, SEATS_API_EMPTY } from '../helpers/fixtures.js';
+import { runningAlerts } from '../../server/services/alertEvaluator.js';
 
 let app;
 let db;
@@ -28,6 +29,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.SEATS_API_KEY;
+  runningAlerts.clear();
 });
 
 const ALERT_BODY = {
@@ -150,6 +152,47 @@ describe('E2E: Alert flow', () => {
     expect(res.body.error).toBe(true);
 
     process.env.MAX_ALERTS = originalMax;
+  });
+
+  // ── Manual run error codes ────────────────────────────────────────────────
+
+  it('POST /:id/run non-existent alert → 404 + NOT_FOUND', async () => {
+    const res = await request(app).post('/api/alerts/99999/run');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
+    expect(res.body.error).toBe(true);
+  });
+
+  it('POST /:id/run already running → 409 + ALREADY_RUNNING', async () => {
+    const { body: alert } = await request(app).post('/api/alerts').send(ALERT_BODY);
+    // Simulate concurrent run by adding to runningAlerts
+    runningAlerts.add(alert.id);
+
+    const res = await request(app).post(`/api/alerts/${alert.id}/run`);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_RUNNING');
+    expect(res.body.error).toBe(true);
+  });
+
+  it('POST /:id/run rate limited → 429 + RATE_LIMITED', async () => {
+    vi.stubGlobal('fetch', mockFetch429());
+    const { body: alert } = await request(app).post('/api/alerts').send(ALERT_BODY);
+
+    const res = await request(app).post(`/api/alerts/${alert.id}/run`);
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('RATE_LIMITED');
+    expect(res.body.error).toBe(true);
+  });
+
+  it('POST /:id/run API error → 502 + UPSTREAM_ERROR + message', async () => {
+    vi.stubGlobal('fetch', mockFetch500());
+    const { body: alert } = await request(app).post('/api/alerts').send(ALERT_BODY);
+
+    const res = await request(app).post(`/api/alerts/${alert.id}/run`);
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe('UPSTREAM_ERROR');
+    expect(res.body.error).toBe(true);
+    expect(res.body.message).toBeTruthy();
   });
 
   it('SSE endpoint returns text/event-stream content-type', async () => {
