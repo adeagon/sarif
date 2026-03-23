@@ -65,7 +65,8 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
   available.forEach(r => {
     const cost = r[`${cabin}MileageCostRaw`];
     if (!bestByProgram[r.Source] || cost < bestByProgram[r.Source].cost) {
-      bestByProgram[r.Source] = { cost, date: r.Date, seats: r[`${cabin}RemainingSeatsRaw`], taxes: r[`${cabin}TotalTaxesRaw`] };
+      const [, rDest] = r.Route ? r.Route.split('-') : [];
+      bestByProgram[r.Source] = { cost, date: r.Date, seats: r[`${cabin}RemainingSeatsRaw`], taxes: r[`${cabin}TotalTaxesRaw`], actualDest: rDest };
     }
   });
 
@@ -129,6 +130,9 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                 <div className="text-xs text-slate-500">
                   from {fmtDate(info.date)}
                   {info.seats > 0 && <span> · {info.seats} seats</span>}
+                  {info.actualDest && info.actualDest !== destination && (
+                    <span className="ml-1 font-mono text-slate-400">· {info.actualDest}</span>
+                  )}
                 </div>
                 {info.taxes > 0 && <div className="text-xs text-slate-500">+{fmtTaxes(info.taxes)} taxes</div>}
                 {canUse && <div className="text-xs text-blue-400">You have points for this</div>}
@@ -142,7 +146,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                     </div>
                   );
                 })()}
-                <a href={bookLink(source, origin, destination)} target="_blank" rel="noopener noreferrer"
+                <a href={bookLink(source, origin, info.actualDest || destination)} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap">
                   View availability <ExternalLink size={9} />
                 </a>
@@ -179,12 +183,16 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                   const seats    = r[`${cabin}RemainingSeatsRaw`];
                   const airlinesRaw = r[`${cabin}Airlines`];
                   const isDirect = r[`${cabin}Direct`];
+                  const [actualOrigin, actualDest] = r.Route ? r.Route.split('-') : [];
                   const isCheap  = miles === cheapestMiles;
                   return (
                     <tr key={i} className={`hover:bg-white/5 transition-colors ${isCheap ? 'bg-emerald-500/5' : ''}`}>
                       <td className="px-5 py-2.5 text-xs font-mono text-slate-300 whitespace-nowrap">
                         {fmtDate(r.Date)}
                         {isDirect && <span className="ml-2 text-emerald-400">direct</span>}
+                        {actualDest && actualDest !== destination && (
+                          <span className="ml-2 text-slate-400">→ {actualDest}</span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-slate-300">{prog?.name || r.Source}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -206,7 +214,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                         </td>
                       )}
                       <td className="px-3 py-2.5">
-                        <a href={bookLink(r.Source, origin, destination)} target="_blank" rel="noopener noreferrer"
+                        <a href={bookLink(r.Source, actualOrigin || origin, actualDest || destination)} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 rounded-md px-2 py-0.5 transition-colors whitespace-nowrap">
                           Book <ExternalLink size={9} />
                         </a>
