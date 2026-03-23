@@ -11,6 +11,8 @@
 
 ## Quickstart
 
+**Node (development):**
+
 ```bash
 git clone https://github.com/jcdentonintheflesh/sarif.git
 cd sarif/app
@@ -22,6 +24,17 @@ npm run dev
 Open [localhost:5173](http://localhost:5173). The app will walk you through setup — add your trips, points, and home airport from the UI. Append `?demo` to the URL to explore with sample data first.
 
 Don't have Git? Click the green **Code** button on the repo page, hit **Download ZIP**, unzip it, and run the same commands starting from `cd sarif/app`.
+
+**Docker Compose (production-style):**
+
+```bash
+git clone https://github.com/jcdentonintheflesh/sarif.git
+cd sarif/app
+cp .env.example .env   # add API keys if desired
+docker compose up --build -d
+```
+
+Open [localhost:3001](http://localhost:3001). SQLite data persists in `app/data/` across restarts. Stop with `docker compose down`.
 
 ## API keys (optional)
 
