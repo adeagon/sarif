@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import alertsRouter from './routes/alerts.js';
 import { startPolling } from './services/alertScheduler.js';
+import database from './db.js';
 
 const app  = express();
 const HOST = process.env.HOST || '0.0.0.0';
@@ -17,6 +18,17 @@ app.use(express.json());
 // ── Shared search cache (alerts + manual search share this) ──────────────────
 const searchCache = new Map(); // key → { data, ts }
 app.set('searchCache', searchCache);
+
+// ── Health endpoint ───────────────────────────────────────────────────────────
+const dbPing = database.prepare('SELECT 1');
+app.get('/api/health', (req, res) => {
+  try {
+    dbPing.get();
+    res.json({ ok: true, service: 'sarif' });
+  } catch {
+    res.status(503).json({ ok: false, service: 'sarif' });
+  }
+});
 
 // ── Alerts router ─────────────────────────────────────────────────────────────
 app.use('/api/alerts', alertsRouter);
