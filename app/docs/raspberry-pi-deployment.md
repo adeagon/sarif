@@ -59,7 +59,7 @@ hostname -I
 Open from any machine on the network:
 
 ```
-http://<pi-ip>:3001
+http://<pi-ip>:3002
 ```
 
 Recommend setting a DHCP reservation on your router so the Pi always gets the same IP.
@@ -92,19 +92,19 @@ From the Pi or another machine on the LAN:
 
 ```bash
 # Service is up
-curl -s http://<pi-ip>:3001/api/alerts        # expect []
+curl -s http://<pi-ip>:3002/api/alerts        # expect []
 
 # Create an alert
-curl -s -X POST http://<pi-ip>:3001/api/alerts \
+curl -s -X POST http://<pi-ip>:3002/api/alerts \
   -H 'Content-Type: application/json' \
   -d '{"origin":"JFK","destination":"LHR","cabin":"J"}'
 
 # Confirm it persisted
-curl -s http://<pi-ip>:3001/api/alerts        # expect array with 1 alert
+curl -s http://<pi-ip>:3002/api/alerts        # expect array with 1 alert
 
 # Restart and confirm data survives
 docker compose down && docker compose up -d
-curl -s http://<pi-ip>:3001/api/alerts        # expect same alert still present
+curl -s http://<pi-ip>:3002/api/alerts        # expect same alert still present
 ```
 
 Verify SQLite bind mount on host:

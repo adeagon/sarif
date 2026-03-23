@@ -65,7 +65,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
   available.forEach(r => {
     const cost = r[`${cabin}MileageCostRaw`];
     if (!bestByProgram[r.Source] || cost < bestByProgram[r.Source].cost) {
-      const [, rDest] = r.Route ? r.Route.split('-') : [];
+      const [, rDest] = typeof r.Route === 'string' ? r.Route.split('-') : [];
       bestByProgram[r.Source] = { cost, date: r.Date, seats: r[`${cabin}RemainingSeatsRaw`], taxes: r[`${cabin}TotalTaxesRaw`], actualDest: rDest };
     }
   });
@@ -183,7 +183,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                   const seats    = r[`${cabin}RemainingSeatsRaw`];
                   const airlinesRaw = r[`${cabin}Airlines`];
                   const isDirect = r[`${cabin}Direct`];
-                  const [actualOrigin, actualDest] = r.Route ? r.Route.split('-') : [];
+                  const [actualOrigin, actualDest] = typeof r.Route === 'string' ? r.Route.split('-') : [];
                   const isCheap  = miles === cheapestMiles;
                   return (
                     <tr key={i} className={`hover:bg-white/5 transition-colors ${isCheap ? 'bg-emerald-500/5' : ''}`}>
