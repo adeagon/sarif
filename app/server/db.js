@@ -54,6 +54,7 @@ const DDL = `
     first_seen_at TEXT   NOT NULL DEFAULT (datetime('now')),
     last_seen_at  TEXT   NOT NULL DEFAULT (datetime('now')),
     missed_polls  INTEGER NOT NULL DEFAULT 0,
+    notified_at   TEXT,
     UNIQUE(alert_id, fingerprint)
   );
 `;
@@ -66,6 +67,13 @@ export function createDatabase(path = DB_PATH) {
   database.pragma('journal_mode = WAL');
   database.pragma('foreign_keys = ON');
   database.exec(DDL);
+
+  // Migration: add notified_at to alert_matches for existing databases
+  const cols = database.pragma('table_info(alert_matches)');
+  if (!cols.some(c => c.name === 'notified_at')) {
+    database.exec('ALTER TABLE alert_matches ADD COLUMN notified_at TEXT');
+  }
+
   return database;
 }
 

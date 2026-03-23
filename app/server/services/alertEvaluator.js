@@ -1,5 +1,6 @@
 import db from '../db.js';
 import { broadcastSSE } from './alertSSE.js';
+import { sendNotification } from './pushover.js';
 import { PROGRAMS } from '../awardConstants.js';
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes — matches index.js
@@ -105,6 +106,26 @@ export async function fetchResults(alert, searchCache, seatsApiKey) {
   return { data, fromCache: false };
 }
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function formatMatchMessage(row, cabin) {
+  const miles = row[`${cabin}MileageCostRaw`];
+  const taxes = row[`${cabin}TotalTaxesRaw`];
+  const seats = row[`${cabin}RemainingSeatsRaw`];
+
+  const [, mm, dd] = (row.Date || '').split('-');
+  const dateStr = (mm && dd)
+    ? `${MONTHS[parseInt(mm, 10) - 1]} ${parseInt(dd, 10)}`
+    : (row.Date || '');
+
+  const milesStr = miles ? `${Math.round(miles / 1000)}k` : '';
+  const taxesStr = taxes ? `$${Math.round(taxes / 100)}` : '';
+  const costStr  = [milesStr, taxesStr].filter(Boolean).join(' + ');
+  const seatsStr = seats ? ` · ${seats} seat${seats !== 1 ? 's' : ''}` : '';
+
+  return `${dateStr} · ${row.Source}${costStr ? ' · ' + costStr : ''}${seatsStr}`;
+}
+
 /**
  * Evaluate pre-fetched rows against an alert's criteria.
  * Handles: match upserts, lifecycle transitions (missed_polls, expiry), SSE broadcast, run recording.
@@ -115,7 +136,7 @@ export async function fetchResults(alert, searchCache, seatsApiKey) {
  * @param {{ database?: import('better-sqlite3').Database, broadcast?: Function }} opts
  * @returns {{ matchesNew: number, matchesSeen: number }}
  */
-export function evaluateRowsForAlert(alert, rows, { database = db, broadcast = broadcastSSE } = {}) {
+export async function evaluateRowsForAlert(alert, rows, { database = db, broadcast = broadcastSSE } = {}) {
   const alertId = alert.id;
   const today   = new Date().toISOString().slice(0, 10);
 
@@ -133,6 +154,7 @@ export function evaluateRowsForAlert(alert, rows, { database = db, broadcast = b
   let matchesNew  = 0;
   let matchesSeen = 0;
   let runError    = null;
+  const pendingNotifications = [];
 
   try {
     const seenFingerprints = new Set();
@@ -195,6 +217,11 @@ export function evaluateRowsForAlert(alert, rows, { database = db, broadcast = b
               airlines:    row[`${alert.cabin}Airlines`],
             },
           });
+          pendingNotifications.push({
+            fp,
+            title:   `${alert.origin} → ${alert.destination}`,
+            message: formatMatchMessage(row, alert.cabin),
+          });
         } else {
           matchesSeen++;
         }
@@ -229,6 +256,16 @@ export function evaluateRowsForAlert(alert, rows, { database = db, broadcast = b
     });
 
     runTransaction();
+
+    // Send push notifications for new matches (post-transaction, sequential)
+    for (const { fp, title, message } of pendingNotifications) {
+      const result = await sendNotification({ title, message });
+      if (result.ok) {
+        database.prepare(
+          `UPDATE alert_matches SET notified_at = datetime('now') WHERE alert_id = ? AND fingerprint = ?`
+        ).run(alertId, fp);
+      }
+    }
 
     database.prepare(`
       UPDATE alerts

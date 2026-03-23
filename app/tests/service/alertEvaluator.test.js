@@ -7,6 +7,11 @@ import {
 } from '../helpers/fixtures.js';
 import { evaluateAlert, evaluateRowsForAlert, runningAlerts } from '../../server/services/alertEvaluator.js';
 import { runPollCycle } from '../../server/services/alertScheduler.js';
+import { sendNotification } from '../../server/services/pushover.js';
+
+vi.mock('../../server/services/pushover.js', () => ({
+  sendNotification: vi.fn().mockResolvedValue({ ok: true }),
+}));
 
 let db;
 let alertId;
@@ -21,6 +26,8 @@ beforeEach(() => {
   broadcast = vi.fn();
   searchCache = new Map();
   vi.stubGlobal('fetch', mockFetchSuccess(SEATS_API_SUCCESS));
+  vi.mocked(sendNotification).mockClear();
+  vi.mocked(sendNotification).mockResolvedValue({ ok: true });
 });
 
 afterEach(() => {
@@ -163,105 +170,105 @@ describe('evaluateAlert()', () => {
 // ── evaluateRowsForAlert() — direct lifecycle tests ───────────────────────────
 
 describe('evaluateRowsForAlert()', () => {
-  it('with pre-fetched rows returns correct matchesNew/matchesSeen', () => {
-    const result = evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+  it('with pre-fetched rows returns correct matchesNew/matchesSeen', async () => {
+    const result = await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     expect(result.matchesNew).toBe(2);
     expect(result.matchesSeen).toBe(0);
   });
 
-  it('re-run with same rows: matchesSeen=2, matchesNew=0', () => {
-    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+  it('re-run with same rows: matchesSeen=2, matchesNew=0', async () => {
+    await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     broadcast.mockClear();
-    const result = evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    const result = await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     expect(result.matchesNew).toBe(0);
     expect(result.matchesSeen).toBe(2);
     expect(broadcast).not.toHaveBeenCalled();
   });
 
-  it('inserts alert_run record on success', () => {
-    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+  it('inserts alert_run record on success', async () => {
+    await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     const runs = db.prepare(`SELECT * FROM alert_runs WHERE alert_id = ?`).all(alertId);
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe('ok');
     expect(runs[0].matches_new).toBe(2);
   });
 
-  it('match first seen → status=new, second seen → status=active', () => {
-    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+  it('match first seen → status=new, second seen → status=active', async () => {
+    await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     const firstRun = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? ORDER BY id`).all(alertId);
     expect(firstRun[0].status).toBe('new');
 
-    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
     const secondRun = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? ORDER BY id`).all(alertId);
     expect(secondRun[0].status).toBe('active');
   });
 
-  it('missed_polls increments for unseen matches', () => {
+  it('missed_polls increments for unseen matches', async () => {
     // Insert a match manually
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, 'fp-unseen', 'aeroplan', '2026-06-15', 'J', 'active', 0)
     `).run(alertId);
 
-    evaluateRowsForAlert(alert, [], opts()); // empty rows → nothing seen
+    await evaluateRowsForAlert(alert, [], opts()); // empty rows → nothing seen
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-unseen'`).get();
     expect(match.missed_polls).toBe(1);
   });
 
-  it('missed_polls resets to 0 for seen match', () => {
+  it('missed_polls resets to 0 for seen match', async () => {
     // Insert a match with missed_polls=2
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, ?, 'aeroplan', '2026-06-15', 'J', 'active', 2)
     `).run(alertId, `${alertId}-avail-001`);
 
-    evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = ?`).get(`${alertId}-avail-001`);
     expect(match.missed_polls).toBe(0);
   });
 
-  it('"new" match with missed_polls >= 3 → expired', () => {
+  it('"new" match with missed_polls >= 3 → expired', async () => {
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, 'fp-new-expire', 'aeroplan', '2026-06-15', 'J', 'new', 3)
     `).run(alertId);
 
-    evaluateRowsForAlert(alert, [], opts());
+    await evaluateRowsForAlert(alert, [], opts());
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-new-expire'`).get();
     expect(match.status).toBe('expired');
   });
 
-  it('"active" match with missed_polls >= 3 → expired', () => {
+  it('"active" match with missed_polls >= 3 → expired', async () => {
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, 'fp-active-expire', 'aeroplan', '2026-06-15', 'J', 'active', 3)
     `).run(alertId);
 
-    evaluateRowsForAlert(alert, [], opts());
+    await evaluateRowsForAlert(alert, [], opts());
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-active-expire'`).get();
     expect(match.status).toBe('expired');
   });
 
-  it('"dismissed" match never incremented or expired', () => {
+  it('"dismissed" match never incremented or expired', async () => {
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, 'fp-dismissed', 'aeroplan', '2026-06-15', 'J', 'dismissed', 2)
     `).run(alertId);
 
-    evaluateRowsForAlert(alert, [], opts());
+    await evaluateRowsForAlert(alert, [], opts());
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-dismissed'`).get();
     expect(match.status).toBe('dismissed');
     expect(match.missed_polls).toBe(2); // unchanged
   });
 
-  it('match with past travel date → expired (date-based expiration)', () => {
+  it('match with past travel date → expired (date-based expiration)', async () => {
     const pastRow = makeSeatsRow({ Date: '2020-01-01', ID: 'avail-past' });
-    evaluateRowsForAlert(alert, [pastRow], opts());
+    await evaluateRowsForAlert(alert, [pastRow], opts());
 
     // Row matched criteria but date is past — no new match inserted (expired immediately)
     const matches = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ?`).all(alertId);
@@ -270,29 +277,76 @@ describe('evaluateRowsForAlert()', () => {
     expect(active).toHaveLength(0);
   });
 
-  it('dismissed past-date match stays dismissed, not reclassified to expired', () => {
+  it('dismissed past-date match stays dismissed, not reclassified to expired', async () => {
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, 'fp-dis-past', 'aeroplan', '2020-01-01', 'J', 'dismissed', 0)
     `).run(alertId);
 
-    evaluateRowsForAlert(alert, [], opts());
+    await evaluateRowsForAlert(alert, [], opts());
 
     const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-dis-past'`).get();
     expect(match.status).toBe('dismissed');
   });
 
-  it('transferable alert: rejects non-transferable program (american)', () => {
+  it('transferable alert: rejects non-transferable program (american)', async () => {
     const a = insertAlert(db, { transferable: 1 });
     const row = makeSeatsRow({ Source: 'american' });
-    const result = evaluateRowsForAlert(a, [row], opts());
+    const result = await evaluateRowsForAlert(a, [row], opts());
     expect(result.matchesNew).toBe(0);
   });
 
-  it('transferable alert: accepts transferable program (aeroplan)', () => {
+  it('transferable alert: accepts transferable program (aeroplan)', async () => {
     const a = insertAlert(db, { transferable: 1 });
     const row = makeSeatsRow({ Source: 'aeroplan' }); // aeroplan has transferFrom
-    const result = evaluateRowsForAlert(a, [row], opts());
+    const result = await evaluateRowsForAlert(a, [row], opts());
+    expect(result.matchesNew).toBe(1);
+  });
+
+  // ── Pushover notification tests ───────────────────────────────────────────
+
+  it('new match triggers sendNotification with formatted title/message', async () => {
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    expect(sendNotification).toHaveBeenCalledOnce();
+    const call = vi.mocked(sendNotification).mock.calls[0][0];
+    expect(call.title).toBe('JFK → NRT');
+    expect(call.message).toMatch(/Aeroplan|aeroplan/i);
+    expect(call.message).toMatch(/70k/);
+  });
+
+  it('seen match does not trigger sendNotification', async () => {
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    vi.mocked(sendNotification).mockClear();
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('notified_at set on match row after successful send', async () => {
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? LIMIT 1`).get(alertId);
+    expect(match.notified_at).toBeTruthy();
+  });
+
+  it('notified_at remains NULL when send fails', async () => {
+    vi.mocked(sendNotification).mockResolvedValueOnce({ ok: false, reason: 'http_500' });
+    await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? LIMIT 1`).get(alertId);
+    expect(match.notified_at).toBeNull();
+  });
+
+  it('Pushover failure does not break alert evaluation', async () => {
+    vi.mocked(sendNotification).mockResolvedValueOnce({ ok: false, reason: 'ECONNREFUSED' });
+    const result = await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    expect(result.matchesNew).toBe(2);
+    expect(result.matchesSeen).toBe(0);
+    const runs = db.prepare(`SELECT * FROM alert_runs WHERE alert_id = ?`).all(alertId);
+    expect(runs[0].status).toBe('ok');
+  });
+
+  it('missing Pushover env vars: evaluation succeeds, no notification sent to API', async () => {
+    // sendNotification is mocked — but verify it's called and returns not_configured gracefully
+    vi.mocked(sendNotification).mockResolvedValueOnce({ ok: false, reason: 'not_configured' });
+    const result = await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
     expect(result.matchesNew).toBe(1);
   });
 
