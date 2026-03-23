@@ -1,0 +1,15 @@
+services:
+  sarif:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3001"
+      SARIF_DB_PATH: /data/sarif.db
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
