@@ -36,6 +36,8 @@ docker compose up --build -d
 
 Open [localhost:3001](http://localhost:3001). SQLite data persists in `app/data/` across restarts. Stop with `docker compose down`.
 
+For Raspberry Pi LAN deployment, see [app/docs/raspberry-pi-deployment.md](app/docs/raspberry-pi-deployment.md).
+
 ## API keys (optional)
 
 Works without any API keys. Award search and live prices turn on once you add them.
