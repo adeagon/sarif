@@ -6,7 +6,7 @@ export const SEATS_ROW_MATCH = {
   Date: '2026-06-15',
   Source: 'aeroplan',
   ID: 'avail-001',
-  Route: 'JFK-NRT',
+  Route: { OriginAirport: 'JFK', DestinationAirport: 'NRT' },
   JMileageCostRaw: 70000,
   JTotalTaxesRaw: 5600,
   JRemainingSeatsRaw: 2,

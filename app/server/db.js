@@ -49,7 +49,9 @@ const DDL = `
     seats        INTEGER,
     direct       INTEGER NOT NULL DEFAULT 0,
     airlines     TEXT,
-    availability_id TEXT,
+    availability_id    TEXT,
+    origin_airport     TEXT,
+    destination_airport TEXT,
     status       TEXT    NOT NULL DEFAULT 'new',
     first_seen_at TEXT   NOT NULL DEFAULT (datetime('now')),
     last_seen_at  TEXT   NOT NULL DEFAULT (datetime('now')),
@@ -68,10 +70,14 @@ export function createDatabase(path = DB_PATH) {
   database.pragma('foreign_keys = ON');
   database.exec(DDL);
 
-  // Migration: add notified_at to alert_matches for existing databases
+  // Migrations: add columns to alert_matches for existing databases
   const cols = database.pragma('table_info(alert_matches)');
   if (!cols.some(c => c.name === 'notified_at')) {
     database.exec('ALTER TABLE alert_matches ADD COLUMN notified_at TEXT');
+  }
+  if (!cols.some(c => c.name === 'origin_airport')) {
+    database.exec('ALTER TABLE alert_matches ADD COLUMN origin_airport TEXT');
+    database.exec('ALTER TABLE alert_matches ADD COLUMN destination_airport TEXT');
   }
 
   return database;

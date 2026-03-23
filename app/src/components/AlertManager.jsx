@@ -139,12 +139,15 @@ function AlertCard({ alert, onToggle, onDelete, onRun, running }) {
                         {m.direct ? <span className="text-xs text-emerald-400">direct</span> : null}
                         {m.seats > 0 && <span className="text-xs text-slate-500">{m.seats} seats</span>}
                         <span className="text-xs text-slate-500">{PROGRAMS[m.source]?.name || m.source}</span>
+                        {m.destination_airport && m.destination_airport !== alert.destination && (
+                          <span className="text-xs font-mono text-slate-400">{m.origin_airport}–{m.destination_airport}</span>
+                        )}
                         <StatusBadge status={m.status} />
                       </div>
                       {m.airlines && <div className="text-xs text-slate-600 mt-0.5">{m.airlines}</div>}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <a href={bookLink(m.source, alert.origin, alert.destination)}
+                      <a href={bookLink(m.source, m.origin_airport || alert.origin, m.destination_airport || alert.destination)}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 rounded-md px-2 py-0.5 transition-colors">
                         Book <ExternalLink size={9} />

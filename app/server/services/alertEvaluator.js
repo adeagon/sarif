@@ -142,9 +142,9 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
 
   const insertMatch = database.prepare(`
     INSERT INTO alert_matches
-      (alert_id, fingerprint, source, date, cabin, miles, taxes, seats, direct, airlines, availability_id, status)
+      (alert_id, fingerprint, source, date, cabin, miles, taxes, seats, direct, airlines, availability_id, origin_airport, destination_airport, status)
     VALUES
-      (@alert_id, @fingerprint, @source, @date, @cabin, @miles, @taxes, @seats, @direct, @airlines, @availability_id, 'new')
+      (@alert_id, @fingerprint, @source, @date, @cabin, @miles, @taxes, @seats, @direct, @airlines, @availability_id, @origin_airport, @destination_airport, 'new')
     ON CONFLICT(alert_id, fingerprint) DO UPDATE SET
       last_seen_at  = datetime('now'),
       missed_polls  = 0,
@@ -192,9 +192,11 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
           miles:           row[`${alert.cabin}MileageCostRaw`] || null,
           taxes:           row[`${alert.cabin}TotalTaxesRaw`]  || null,
           seats:           row[`${alert.cabin}RemainingSeatsRaw`] || null,
-          direct:          row[`${alert.cabin}Direct`] ? 1 : 0,
-          airlines:        row[`${alert.cabin}Airlines`] || null,
-          availability_id: availId,
+          direct:              row[`${alert.cabin}Direct`] ? 1 : 0,
+          airlines:            row[`${alert.cabin}Airlines`] || null,
+          availability_id:     availId,
+          origin_airport:      row.Route?.OriginAirport      || null,
+          destination_airport: row.Route?.DestinationAirport || null,
         });
 
         if (!prev) {
@@ -219,7 +221,7 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
           });
           pendingNotifications.push({
             fp,
-            title:   `${alert.origin} → ${alert.destination}`,
+            title:   `${alert.origin} → ${row.Route?.DestinationAirport || alert.destination}`,
             message: formatMatchMessage(row, alert.cabin),
           });
         } else {

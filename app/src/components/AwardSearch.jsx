@@ -65,7 +65,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
   available.forEach(r => {
     const cost = r[`${cabin}MileageCostRaw`];
     if (!bestByProgram[r.Source] || cost < bestByProgram[r.Source].cost) {
-      const [, rDest] = typeof r.Route === 'string' ? r.Route.split('-') : [];
+      const rDest = r.Route?.DestinationAirport;
       bestByProgram[r.Source] = { cost, date: r.Date, seats: r[`${cabin}RemainingSeatsRaw`], taxes: r[`${cabin}TotalTaxesRaw`], actualDest: rDest };
     }
   });
@@ -183,7 +183,8 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                   const seats    = r[`${cabin}RemainingSeatsRaw`];
                   const airlinesRaw = r[`${cabin}Airlines`];
                   const isDirect = r[`${cabin}Direct`];
-                  const [actualOrigin, actualDest] = typeof r.Route === 'string' ? r.Route.split('-') : [];
+                  const actualOrigin = r.Route?.OriginAirport;
+                  const actualDest = r.Route?.DestinationAirport;
                   const isCheap  = miles === cheapestMiles;
                   return (
                     <tr key={i} className={`hover:bg-white/5 transition-colors ${isCheap ? 'bg-emerald-500/5' : ''}`}>
@@ -299,6 +300,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
   const [retResults,      setRetResults]      = useState(null);
 
   const [onlyTransferable, setOnlyTransferable] = useState(true);
+  const [onlyDirect,       setOnlyDirect]       = useState(false);
   const [programFilter,   setProgramFilter]   = useState('all');
   const [sortBy,          setSortBy]          = useState('price');
 
@@ -400,6 +402,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
       const cost  = r[`${cabin}MileageCostRaw`];
       if (!avail || !cost) return false;
       if (onlyTransferable && !PROGRAMS[r.Source]?.transferFrom?.length) return false;
+      if (onlyDirect && !r[`${cabin}Direct`]) return false;
       if (dateFrom && r.Date < dateFrom) return false;
       if (dateTo   && r.Date > dateTo)   return false;
       return true;
@@ -570,6 +573,14 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
                 className="rounded accent-blue-500" />
               <label htmlFor="transferable" className="text-xs text-slate-400 cursor-pointer">
                 Transferable only (Amex MR / Chase UR)
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="directOnly" checked={onlyDirect}
+                onChange={e => setOnlyDirect(e.target.checked)}
+                className="rounded accent-blue-500" />
+              <label htmlFor="directOnly" className="text-xs text-slate-400 cursor-pointer">
+                Direct only
               </label>
             </div>
 
