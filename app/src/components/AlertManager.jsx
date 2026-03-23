@@ -379,7 +379,7 @@ export default function AlertManager({ alertPrefill }) {
             </div>
             <div>
               <label className="text-xs text-slate-500 block mb-1">Date to</label>
-              <input type="date" value={form.date_to} onChange={fieldSet('date_to')}
+              <input type="date" min={form.date_from} value={form.date_to} onChange={fieldSet('date_to')}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors" />
             </div>
             <div>
