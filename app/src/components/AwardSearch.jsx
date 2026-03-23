@@ -420,7 +420,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             <div className="flex items-center gap-2">
               {onCreateAlert && (
                 <button
-                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo })}
+                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo, transferable: onlyTransferable })}
                   title="Create an alert for this route"
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">
                   <Bell size={12} /> Alert
@@ -542,7 +542,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             </div>
             <div>
               <label className="text-xs text-slate-500 block mb-1">Depart before</label>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              <input type="date" min={dateFrom} value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors duration-150" />
             </div>
             {(dateFrom || dateTo) && (
