@@ -1,10 +1,14 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
 import alertsRouter from './routes/alerts.js';
 import { startPolling } from './services/alertScheduler.js';
 
 const app  = express();
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || /localhost:\d+/ }));
@@ -203,8 +207,30 @@ app.get('/api/cashbiz', async (req, res) => {
   }
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Travel agent API running on http://localhost:${PORT}`);
+// ── Production static serving ─────────────────────────────────────────────────
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distPath  = path.join(__dirname, '..', 'dist');
+const indexPath = path.join(distPath, 'index.html');
+
+if (fs.existsSync(indexPath)) {
+  app.use(express.static(distPath));
+
+  // SPA fallback — serve index.html for browser navigation to non-API routes
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api/')) return next();
+    if (!req.accepts('html')) return next();
+    res.sendFile(indexPath);
+  });
+} else {
+  console.warn('  ⚠ dist/index.html not found — run "npm run build" to enable production serving');
+}
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Sarif listening on ${HOST}:${PORT}`);
+  if (HOST === '0.0.0.0') {
+    console.log('  → accessible on your LAN via this machine\'s IP address');
+  }
   if (!process.env.TRAVELPAYOUTS_TOKEN) {
     console.log('  ⚠ TRAVELPAYOUTS_TOKEN not set — cash prices disabled');
   }
