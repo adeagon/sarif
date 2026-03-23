@@ -4,7 +4,7 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH   = resolve(__dirname, 'data', 'sarif.db');
+const DB_PATH   = process.env.SARIF_DB_PATH || resolve(__dirname, 'data', 'sarif.db');
 
 const DDL = `
   CREATE TABLE IF NOT EXISTS alerts (
