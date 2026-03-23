@@ -14,7 +14,7 @@
 **Node (development):**
 
 ```bash
-git clone https://github.com/jcdentonintheflesh/sarif.git
+git clone https://github.com/adeagon/sarif.git
 cd sarif/app
 npm install
 cp .env.example .env
@@ -28,7 +28,7 @@ Don't have Git? Click the green **Code** button on the repo page, hit **Download
 **Docker Compose (production-style):**
 
 ```bash
-git clone https://github.com/jcdentonintheflesh/sarif.git
+git clone https://github.com/adeagon/sarif.git
 cd sarif/app
 cp .env.example .env   # add API keys if desired
 docker compose up --build -d
