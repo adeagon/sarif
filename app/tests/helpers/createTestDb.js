@@ -52,6 +52,7 @@ export function createTestDb() {
       first_seen_at TEXT   NOT NULL DEFAULT (datetime('now')),
       last_seen_at  TEXT   NOT NULL DEFAULT (datetime('now')),
       missed_polls  INTEGER NOT NULL DEFAULT 0,
+      notified_at   TEXT,
       UNIQUE(alert_id, fingerprint)
     );
   `);

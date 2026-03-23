@@ -47,6 +47,7 @@ Works without any API keys. Award search and live prices turn on once you add th
 | `SEATS_API_KEY` | Award search | [seats.aero](https://seats.aero) | $9.99/mo |
 | `RAPIDAPI_KEY` | Business/PE cash prices | [Sky Scrapper on RapidAPI](https://rapidapi.com/apiheya/api/sky-scrapper) | Free (100 req/mo) or $8.99/mo (10k req) |
 | `TRAVELPAYOUTS_TOKEN` | Economy cash baseline | [travelpayouts.com](https://www.travelpayouts.com/developers/api) | Free |
+| `PUSHOVER_TOKEN` + `PUSHOVER_USER_KEY` | Push notifications for alert matches | [pushover.net](https://pushover.net) | One-time $5 |
 
 Add keys to `.env` and restart `npm run dev` — it runs both the frontend and the API server automatically.
 
@@ -56,7 +57,7 @@ Add keys to `.env` and restart `npm run dev` — it runs both the frontend and t
 
 **Award Search** pulls live award availability from [seats.aero](https://seats.aero), which aggregates availability across 30+ airline loyalty programs (United, Aeroplan, Flying Blue, etc.) into one API. Sarif shows these results alongside cash prices from [Sky Scrapper](https://rapidapi.com/apiheya/api/sky-scrapper) (business/premium economy) and [Travelpayouts](https://www.travelpayouts.com/developers/api) (economy), so you can compare points vs. dollars on the same screen.
 
-**Award Alerts** monitors routes in the background and notifies you in real time when seats matching your criteria become available — filter by cabin, max miles, max taxes, direct-only, date range, and specific programs. Alerts are evaluated every 15 minutes via seats.aero and pushed to the browser over SSE.
+**Award Alerts** monitors routes in the background and notifies you when seats matching your criteria become available — filter by cabin, max miles, max taxes, direct-only, date range, and specific programs. Alerts are evaluated every 15 minutes via seats.aero and pushed to the browser over SSE. Add `PUSHOVER_TOKEN` and `PUSHOVER_USER_KEY` to `.env` to also receive a push notification on your phone for each new match.
 
 **Points & Miles** tracks balances across all your programs and shows which transferable currencies (Amex MR, Chase UR, etc.) can move where.
 

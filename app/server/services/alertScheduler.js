@@ -100,7 +100,7 @@ export async function runPollCycle(searchCache, seatsApiKey, {
     // Fetch succeeded — evaluate each alert in the group against the shared rows
     for (const alert of groupAlerts) {
       try {
-        const result = evaluateFn(alert, rows, { database });
+        const result = await evaluateFn(alert, rows, { database });
         const { matchesNew = 0, matchesSeen = 0 } = result || {};
         console.log(`[alerts] poll alert#${alert.id} — ${matchesNew} new, ${matchesSeen} seen`);
       } catch (err) {
