@@ -90,7 +90,7 @@ export function createAlertsRouter(database = db) {
   router.post('/:id/run', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const alert = database.prepare(`SELECT * FROM alerts WHERE id = ?`).get(id);
-    if (!alert) return res.status(404).json({ error: true, message: 'Alert not found' });
+    if (!alert) return res.status(404).json({ error: true, code: 'NOT_FOUND', message: 'Alert not found' });
 
     const searchCache = req.app.get('searchCache');
     const seatsApiKey = process.env.SEATS_API_KEY;
@@ -99,7 +99,13 @@ export function createAlertsRouter(database = db) {
       const result = await evaluateAlert(id, searchCache, seatsApiKey, { database });
       res.json({ ok: true, matchesNew: result.matchesNew, matchesSeen: result.matchesSeen });
     } catch (err) {
-      res.status(500).json({ error: true, message: err.message });
+      if (err.message === 'Alert already running') {
+        return res.status(409).json({ error: true, code: 'ALREADY_RUNNING', message: 'Alert is already running' });
+      }
+      if (err.code === 'RATE_LIMITED') {
+        return res.status(429).json({ error: true, code: 'RATE_LIMITED', message: 'Rate limited by seats.aero — try again in a few minutes' });
+      }
+      res.status(502).json({ error: true, code: 'UPSTREAM_ERROR', message: err.message });
     }
   });
 

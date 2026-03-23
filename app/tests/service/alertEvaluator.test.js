@@ -1,16 +1,23 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { createTestDb } from '../helpers/createTestDb.js';
-import { insertAlert, SEATS_API_SUCCESS, SEATS_API_EMPTY, mockFetchSuccess, mockFetch429, mockFetch500 } from '../helpers/fixtures.js';
-import { evaluateAlert, runningAlerts } from '../../server/services/alertEvaluator.js';
+import {
+  insertAlert, SEATS_API_SUCCESS, SEATS_API_EMPTY,
+  mockFetchSuccess, mockFetch429, mockFetch500,
+  SEATS_ROW_MATCH, SEATS_ROW_MATCH_ALT, makeSeatsRow,
+} from '../helpers/fixtures.js';
+import { evaluateAlert, evaluateRowsForAlert, runningAlerts } from '../../server/services/alertEvaluator.js';
+import { runPollCycle } from '../../server/services/alertScheduler.js';
 
 let db;
 let alertId;
+let alert;
 let broadcast;
 let searchCache;
 
 beforeEach(() => {
   db = createTestDb();
-  alertId = insertAlert(db).id;
+  alert = insertAlert(db);
+  alertId = alert.id;
   broadcast = vi.fn();
   searchCache = new Map();
   vi.stubGlobal('fetch', mockFetchSuccess(SEATS_API_SUCCESS));
@@ -22,6 +29,8 @@ afterEach(() => {
 });
 
 const opts = () => ({ database: db, broadcast });
+
+// ── evaluateAlert() — thin wrapper ────────────────────────────────────────────
 
 describe('evaluateAlert()', () => {
   it('inserts new matches and returns correct matchesNew count', async () => {
@@ -75,7 +84,6 @@ describe('evaluateAlert()', () => {
   });
 
   it('uses searchCache hit when TTL not expired (fetch not called)', async () => {
-    // Pre-populate cache with the same params the evaluator would use
     const params = new URLSearchParams({
       origin_airport: 'JFK',
       destination_airport: 'NRT',
@@ -123,9 +131,9 @@ describe('evaluateAlert()', () => {
 
   it('updates last_run_at and last_match_at timestamps', async () => {
     await evaluateAlert(alertId, searchCache, 'key', opts());
-    const alert = db.prepare(`SELECT * FROM alerts WHERE id = ?`).get(alertId);
-    expect(alert.last_run_at).toBeTruthy();
-    expect(alert.last_match_at).toBeTruthy(); // had 2 new matches
+    const a = db.prepare(`SELECT * FROM alerts WHERE id = ?`).get(alertId);
+    expect(a.last_run_at).toBeTruthy();
+    expect(a.last_match_at).toBeTruthy(); // had 2 new matches
   });
 
   it('filters rows through matchesCriteria — expensive row not inserted', async () => {
@@ -137,7 +145,6 @@ describe('evaluateAlert()', () => {
   });
 
   it('concurrent Run Now: second call while first is running throws "Alert already running"', async () => {
-    // Simulate first call in flight by manually adding to set
     runningAlerts.add(alertId);
     await expect(evaluateAlert(alertId, searchCache, 'key', opts())).rejects.toThrow('Alert already running');
   });
@@ -150,5 +157,176 @@ describe('evaluateAlert()', () => {
     vi.stubGlobal('fetch', mockFetchSuccess(SEATS_API_EMPTY));
     const result = await evaluateAlert(alertId, searchCache, 'key', opts());
     expect(result.matchesNew).toBe(0);
+  });
+});
+
+// ── evaluateRowsForAlert() — direct lifecycle tests ───────────────────────────
+
+describe('evaluateRowsForAlert()', () => {
+  it('with pre-fetched rows returns correct matchesNew/matchesSeen', () => {
+    const result = evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    expect(result.matchesNew).toBe(2);
+    expect(result.matchesSeen).toBe(0);
+  });
+
+  it('re-run with same rows: matchesSeen=2, matchesNew=0', () => {
+    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    broadcast.mockClear();
+    const result = evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    expect(result.matchesNew).toBe(0);
+    expect(result.matchesSeen).toBe(2);
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('inserts alert_run record on success', () => {
+    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    const runs = db.prepare(`SELECT * FROM alert_runs WHERE alert_id = ?`).all(alertId);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe('ok');
+    expect(runs[0].matches_new).toBe(2);
+  });
+
+  it('match first seen → status=new, second seen → status=active', () => {
+    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    const firstRun = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? ORDER BY id`).all(alertId);
+    expect(firstRun[0].status).toBe('new');
+
+    evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    const secondRun = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ? ORDER BY id`).all(alertId);
+    expect(secondRun[0].status).toBe('active');
+  });
+
+  it('missed_polls increments for unseen matches', () => {
+    // Insert a match manually
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, 'fp-unseen', 'aeroplan', '2026-06-15', 'J', 'active', 0)
+    `).run(alertId);
+
+    evaluateRowsForAlert(alert, [], opts()); // empty rows → nothing seen
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-unseen'`).get();
+    expect(match.missed_polls).toBe(1);
+  });
+
+  it('missed_polls resets to 0 for seen match', () => {
+    // Insert a match with missed_polls=2
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, ?, 'aeroplan', '2026-06-15', 'J', 'active', 2)
+    `).run(alertId, `${alertId}-avail-001`);
+
+    evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = ?`).get(`${alertId}-avail-001`);
+    expect(match.missed_polls).toBe(0);
+  });
+
+  it('"new" match with missed_polls >= 3 → expired', () => {
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, 'fp-new-expire', 'aeroplan', '2026-06-15', 'J', 'new', 3)
+    `).run(alertId);
+
+    evaluateRowsForAlert(alert, [], opts());
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-new-expire'`).get();
+    expect(match.status).toBe('expired');
+  });
+
+  it('"active" match with missed_polls >= 3 → expired', () => {
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, 'fp-active-expire', 'aeroplan', '2026-06-15', 'J', 'active', 3)
+    `).run(alertId);
+
+    evaluateRowsForAlert(alert, [], opts());
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-active-expire'`).get();
+    expect(match.status).toBe('expired');
+  });
+
+  it('"dismissed" match never incremented or expired', () => {
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, 'fp-dismissed', 'aeroplan', '2026-06-15', 'J', 'dismissed', 2)
+    `).run(alertId);
+
+    evaluateRowsForAlert(alert, [], opts());
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-dismissed'`).get();
+    expect(match.status).toBe('dismissed');
+    expect(match.missed_polls).toBe(2); // unchanged
+  });
+
+  it('match with past travel date → expired (date-based expiration)', () => {
+    const pastRow = makeSeatsRow({ Date: '2020-01-01', ID: 'avail-past' });
+    evaluateRowsForAlert(alert, [pastRow], opts());
+
+    // Row matched criteria but date is past — no new match inserted (expired immediately)
+    const matches = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ?`).all(alertId);
+    // No active/new matches inserted for past-date row
+    const active = matches.filter(m => m.status !== 'expired');
+    expect(active).toHaveLength(0);
+  });
+
+  it('dismissed past-date match stays dismissed, not reclassified to expired', () => {
+    db.prepare(`
+      INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
+      VALUES (?, 'fp-dis-past', 'aeroplan', '2020-01-01', 'J', 'dismissed', 0)
+    `).run(alertId);
+
+    evaluateRowsForAlert(alert, [], opts());
+
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = 'fp-dis-past'`).get();
+    expect(match.status).toBe('dismissed');
+  });
+
+  it('transferable alert: rejects non-transferable program (american)', () => {
+    const a = insertAlert(db, { transferable: 1 });
+    const row = makeSeatsRow({ Source: 'american' });
+    const result = evaluateRowsForAlert(a, [row], opts());
+    expect(result.matchesNew).toBe(0);
+  });
+
+  it('transferable alert: accepts transferable program (aeroplan)', () => {
+    const a = insertAlert(db, { transferable: 1 });
+    const row = makeSeatsRow({ Source: 'aeroplan' }); // aeroplan has transferFrom
+    const result = evaluateRowsForAlert(a, [row], opts());
+    expect(result.matchesNew).toBe(1);
+  });
+
+  it('manual run and scheduled eval produce identical lifecycle transitions', async () => {
+    // Two separate alerts to independently exercise each wiring path.
+    // a1 goes through evaluateAlert (lock + fetchResults + evaluateRowsForAlert).
+    // a2 goes through runPollCycle (grouping + fetchFn + evaluateRowsForAlert).
+    const a1 = insertAlert(db, { name: 'Manual path' });
+    const a2 = insertAlert(db, { name: 'Scheduler path' });
+
+    const fetchFn = vi.fn().mockResolvedValue({ data: SEATS_API_SUCCESS.data, fromCache: false });
+
+    // -- Manual path: two runs → first 'new', second 'active'
+    await evaluateAlert(a1.id, searchCache, 'key', opts());
+    await evaluateAlert(a1.id, searchCache, 'key', opts());
+
+    // -- Scheduler path: two poll cycles with real evaluateRowsForAlert → same transitions
+    // Disable a1 so only a2 is picked up by the scheduler
+    db.prepare(`UPDATE alerts SET enabled = 0 WHERE id = ?`).run(a1.id);
+    vi.useFakeTimers();
+    let cycle = runPollCycle(searchCache, 'key', { database: db, fetchFn, evaluateFn: evaluateRowsForAlert });
+    await vi.runAllTimersAsync();
+    await cycle;
+    cycle = runPollCycle(searchCache, 'key', { database: db, fetchFn, evaluateFn: evaluateRowsForAlert });
+    await vi.runAllTimersAsync();
+    await cycle;
+    vi.useRealTimers();
+
+    const manualMatches    = db.prepare(`SELECT status FROM alert_matches WHERE alert_id = ?`).all(a1.id);
+    const scheduledMatches = db.prepare(`SELECT status FROM alert_matches WHERE alert_id = ?`).all(a2.id);
+
+    expect(manualMatches.length).toBeGreaterThan(0);
+    expect(manualMatches.length).toBe(scheduledMatches.length);
+    expect(manualMatches.every(m => m.status === 'active')).toBe(true);
+    expect(scheduledMatches.every(m => m.status === 'active')).toBe(true);
   });
 });

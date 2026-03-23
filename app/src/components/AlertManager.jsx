@@ -70,6 +70,7 @@ function AlertCard({ alert, onToggle, onDelete, onRun, running }) {
             </span>
             {alert.date_from && <span className="text-xs text-slate-500">{fmtDate(alert.date_from)}{alert.date_to ? ` – ${fmtDate(alert.date_to)}` : '+'}</span>}
             {alert.max_miles && <span className="text-xs text-slate-500">≤{fmt(alert.max_miles)}</span>}
+            {alert.transferable ? <span className="text-xs bg-violet-500/15 border border-violet-500/30 text-violet-400 rounded px-1.5 py-0.5">Transferable only</span> : null}
             {hasMatches && (
               <span className="text-xs bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded px-1.5 py-0.5">
                 {alert.match_count} match{alert.match_count !== 1 ? 'es' : ''}
@@ -276,18 +277,35 @@ export default function AlertManager({ alertPrefill }) {
 
   async function handleRun(id) {
     setRunningId(id);
-    const res  = await fetch(`/api/alerts/${id}/run`, { method: 'POST' });
-    const data = await res.json();
-    setRunningId(null);
-    if (data.error) { setError(data.message); return; }
-    // Re-fetch to get updated match counts
-    fetchAlerts();
-    if (data.matchesNew > 0) {
-      setSuccessMsg(`Found ${data.matchesNew} new match${data.matchesNew !== 1 ? 'es' : ''}!`);
-    } else {
-      setSuccessMsg(`No new matches (${data.matchesSeen} previously seen).`);
+    setError(null);
+    try {
+      const res  = await fetch(`/api/alerts/${id}/run`, { method: 'POST' });
+      const data = await res.json();
+      setRunningId(null);
+      if (data.error) {
+        if (data.code === 'RATE_LIMITED') {
+          setError('Rate limited by Seats.aero — please wait a few minutes before retrying.');
+        } else if (data.code === 'ALREADY_RUNNING') {
+          setError('Alert is already running — please wait for it to complete.');
+        } else {
+          setError(data.message || 'Error running alert.');
+        }
+        setTimeout(() => setError(null), 6000);
+        return;
+      }
+      // Re-fetch to get updated match counts
+      fetchAlerts();
+      if (data.matchesNew > 0) {
+        setSuccessMsg(`Found ${data.matchesNew} new match${data.matchesNew !== 1 ? 'es' : ''}!`);
+      } else {
+        setSuccessMsg(`No new matches (${data.matchesSeen} previously seen).`);
+      }
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch {
+      setRunningId(null);
+      setError('Could not reach the server — check your connection.');
+      setTimeout(() => setError(null), 6000);
     }
-    setTimeout(() => setSuccessMsg(null), 4000);
   }
 
   function toggleProgram(key) {

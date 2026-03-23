@@ -1,5 +1,6 @@
 import db from '../db.js';
 import { broadcastSSE } from './alertSSE.js';
+import { PROGRAMS } from '../awardConstants.js';
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes — matches index.js
 
@@ -13,33 +14,41 @@ export const runningAlerts = new Set();
 export function fingerprint(alertId, row, cabin) {
   const availId = row.ID || row.id || row.AvailabilityID;
   if (availId) return `${alertId}-${availId}`;
-  const miles  = row[`${cabin}MileageCostRaw`] ?? '';
-  const taxes  = row[`${cabin}TotalTaxesRaw`]  ?? '';
-  const seats  = row[`${cabin}RemainingSeatsRaw`] ?? '';
-  const direct = row[`${cabin}Direct`] ? '1' : '0';
+  const miles    = row[`${cabin}MileageCostRaw`] ?? '';
+  const taxes    = row[`${cabin}TotalTaxesRaw`]  ?? '';
+  const seats    = row[`${cabin}RemainingSeatsRaw`] ?? '';
+  const direct   = row[`${cabin}Direct`] ? '1' : '0';
   const airlines = row[`${cabin}Airlines`] ?? '';
   return `${alertId}-${row.Date}-${row.Source}-${miles}-${taxes}-${seats}-${direct}-${airlines}`;
+}
+
+/**
+ * Returns true if the program has at least one transfer partner.
+ */
+export function isTransferableProgram(source) {
+  const prog = PROGRAMS[source];
+  return !!(prog && prog.transferFrom && prog.transferFrom.length > 0);
 }
 
 /**
  * Filter a seats.aero result row against an alert's criteria.
  */
 export function matchesCriteria(row, alert) {
-  const { cabin, max_miles, max_taxes, min_seats, direct_only, programs } = alert;
+  const { cabin, max_miles, max_taxes, min_seats, direct_only, programs, transferable } = alert;
 
-  // Must have at least 1 seat
+  // Must have at least min_seats seats
   const seats = row[`${cabin}RemainingSeatsRaw`];
   if (!seats || seats < (min_seats || 1)) return false;
 
-  // Miles threshold
+  // Miles must be positive and under threshold
   const miles = row[`${cabin}MileageCostRaw`];
   if (!miles || miles <= 0) return false;
   if (max_miles && miles > max_miles) return false;
 
-  // Taxes threshold (stored in cents from seats.aero)
+  // max_taxes in dollars, API returns cents
   if (max_taxes) {
     const taxes = row[`${cabin}TotalTaxesRaw`] || 0;
-    if (taxes > max_taxes * 100) return false; // max_taxes is in dollars
+    if (taxes > max_taxes * 100) return false;
   }
 
   // Direct only
@@ -51,6 +60,9 @@ export function matchesCriteria(row, alert) {
     if (allowed.length && !allowed.includes(row.Source)) return false;
   }
 
+  // Transferable programs only
+  if (transferable && !isTransferableProgram(row.Source)) return false;
+
   // Date range
   if (alert.date_from && row.Date < alert.date_from) return false;
   if (alert.date_to   && row.Date > alert.date_to)   return false;
@@ -60,8 +72,9 @@ export function matchesCriteria(row, alert) {
 
 /**
  * Fetch award search results (using shared cache).
+ * Exported so the scheduler can call it once per group.
  */
-async function fetchResults(alert, searchCache, seatsApiKey) {
+export async function fetchResults(alert, searchCache, seatsApiKey) {
   const params = new URLSearchParams({
     origin_airport:      alert.origin,
     destination_airport: alert.destination,
@@ -93,16 +106,18 @@ async function fetchResults(alert, searchCache, seatsApiKey) {
 }
 
 /**
- * Evaluate a single alert against live/cached seats.aero data.
- * @param {number} alertId
- * @param {Map} searchCache
- * @param {string|undefined} seatsApiKey
- * @param {{ database?: import('better-sqlite3').Database, broadcast?: Function }} [opts]
- * @returns {{ matchesNew: number, matchesSeen: number, error?: string }}
+ * Evaluate pre-fetched rows against an alert's criteria.
+ * Handles: match upserts, lifecycle transitions (missed_polls, expiry), SSE broadcast, run recording.
+ * Does NOT manage the runningAlerts lock — caller is responsible.
+ *
+ * @param {object} alert  — full alert row from DB
+ * @param {Array}  rows   — seats.aero data rows (pre-fetched)
+ * @param {{ database?: import('better-sqlite3').Database, broadcast?: Function }} opts
+ * @returns {{ matchesNew: number, matchesSeen: number }}
  */
-export async function evaluateAlert(alertId, searchCache, seatsApiKey, { database = db, broadcast = broadcastSSE } = {}) {
-  if (runningAlerts.has(alertId)) throw new Error('Alert already running');
-  runningAlerts.add(alertId);
+export function evaluateRowsForAlert(alert, rows, { database = db, broadcast = broadcastSSE } = {}) {
+  const alertId = alert.id;
+  const today   = new Date().toISOString().slice(0, 10);
 
   const insertMatch = database.prepare(`
     INSERT INTO alert_matches
@@ -115,38 +130,36 @@ export async function evaluateAlert(alertId, searchCache, seatsApiKey, { databas
       status        = CASE WHEN status = 'dismissed' THEN 'dismissed' ELSE 'active' END
   `);
 
-  const updateAlertTimestamps = database.prepare(`
-    UPDATE alerts
-    SET last_run_at   = datetime('now'),
-        last_match_at = CASE WHEN @had_match THEN datetime('now') ELSE last_match_at END
-    WHERE id = @id
-  `);
-
-  const insertRun = database.prepare(`
-    INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
-    VALUES (@alert_id, @status, @matches_new, @matches_seen, @error)
-  `);
-
-  const getAlert = database.prepare(`SELECT * FROM alerts WHERE id = ?`);
-
-  const alert = getAlert.get(alertId);
-  if (!alert) throw new Error(`Alert ${alertId} not found`);
-
   let matchesNew  = 0;
   let matchesSeen = 0;
   let runError    = null;
 
   try {
-    const { data } = await fetchResults(alert, searchCache, seatsApiKey);
+    const seenFingerprints = new Set();
 
-    const runInserts = database.transaction(() => {
-      for (const row of data) {
+    const runTransaction = database.transaction(() => {
+      for (const row of rows) {
         if (!matchesCriteria(row, alert)) continue;
 
-        const fp = fingerprint(alertId, row, alert.cabin);
+        const fp      = fingerprint(alertId, row, alert.cabin);
         const availId = row.ID || row.id || row.AvailabilityID || null;
 
-        const prev = database.prepare('SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?').get(alertId, fp);
+        // Date-based expiration takes precedence — past travel dates expire immediately.
+        // Rows first encountered with a past date are silently ignored (no match inserted);
+        // only previously-tracked matches reach this branch and get expired.
+        if (row.Date < today) {
+          database.prepare(`
+            UPDATE alert_matches SET status = 'expired'
+            WHERE alert_id = ? AND fingerprint = ? AND status IN ('new', 'active')
+          `).run(alertId, fp);
+          continue;
+        }
+
+        const prev = database.prepare(
+          'SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?'
+        ).get(alertId, fp);
+
+        seenFingerprints.add(fp);
 
         insertMatch.run({
           alert_id:        alertId,
@@ -186,26 +199,91 @@ export async function evaluateAlert(alertId, searchCache, seatsApiKey, { databas
           matchesSeen++;
         }
       }
+
+      // Increment missed_polls for matches not seen in this run
+      if (seenFingerprints.size > 0) {
+        const placeholders = [...seenFingerprints].map(() => '?').join(',');
+        database.prepare(`
+          UPDATE alert_matches SET missed_polls = missed_polls + 1
+          WHERE alert_id = ? AND status NOT IN ('dismissed', 'expired')
+            AND fingerprint NOT IN (${placeholders})
+        `).run(alertId, ...[...seenFingerprints]);
+      } else {
+        database.prepare(`
+          UPDATE alert_matches SET missed_polls = missed_polls + 1
+          WHERE alert_id = ? AND status NOT IN ('dismissed', 'expired')
+        `).run(alertId);
+      }
+
+      // Expire matches with missed_polls >= 3 (new or active)
+      database.prepare(`
+        UPDATE alert_matches SET status = 'expired'
+        WHERE alert_id = ? AND status IN ('new', 'active') AND missed_polls >= 3
+      `).run(alertId);
+
+      // Expire any remaining past-date matches (handles pre-existing rows)
+      database.prepare(`
+        UPDATE alert_matches SET status = 'expired'
+        WHERE alert_id = ? AND status IN ('new', 'active') AND date < ?
+      `).run(alertId, today);
     });
 
-    runInserts();
+    runTransaction();
 
-    updateAlertTimestamps.run({ id: alertId, had_match: matchesNew > 0 ? 1 : 0 });
+    database.prepare(`
+      UPDATE alerts
+      SET last_run_at   = datetime('now'),
+          last_match_at = CASE WHEN @had_match THEN datetime('now') ELSE last_match_at END
+      WHERE id = @id
+    `).run({ id: alertId, had_match: matchesNew > 0 ? 1 : 0 });
 
   } catch (err) {
     runError = err.message;
-    updateAlertTimestamps.run({ id: alertId, had_match: 0 });
+    database.prepare(`UPDATE alerts SET last_run_at = datetime('now') WHERE id = ?`).run(alertId);
     throw err;
   } finally {
-    runningAlerts.delete(alertId);
-    insertRun.run({
-      alert_id:     alertId,
-      status:       runError ? 'error' : 'ok',
-      matches_new:  matchesNew,
-      matches_seen: matchesSeen,
-      error:        runError,
-    });
+    database.prepare(`
+      INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(alertId, runError ? 'error' : 'ok', matchesNew, matchesSeen, runError);
   }
 
   return { matchesNew, matchesSeen };
+}
+
+/**
+ * Evaluate a single alert end-to-end: fetch + evaluate.
+ * Manages the runningAlerts lock. Thin wrapper for manual Run Now.
+ *
+ * @param {number} alertId
+ * @param {Map} searchCache
+ * @param {string|undefined} seatsApiKey
+ * @param {{ database?: import('better-sqlite3').Database, broadcast?: Function }} opts
+ * @returns {{ matchesNew: number, matchesSeen: number }}
+ */
+export async function evaluateAlert(alertId, searchCache, seatsApiKey, { database = db, broadcast = broadcastSSE } = {}) {
+  if (runningAlerts.has(alertId)) throw new Error('Alert already running');
+  runningAlerts.add(alertId);
+
+  try {
+    const alert = database.prepare(`SELECT * FROM alerts WHERE id = ?`).get(alertId);
+    if (!alert) throw new Error(`Alert ${alertId} not found`);
+
+    let data;
+    try {
+      ({ data } = await fetchResults(alert, searchCache, seatsApiKey));
+    } catch (fetchErr) {
+      // Record fetch error as a run entry before re-throwing
+      database.prepare(`
+        INSERT INTO alert_runs (alert_id, status, matches_new, matches_seen, error)
+        VALUES (?, 'error', 0, 0, ?)
+      `).run(alertId, fetchErr.message);
+      database.prepare(`UPDATE alerts SET last_run_at = datetime('now') WHERE id = ?`).run(alertId);
+      throw fetchErr;
+    }
+
+    return evaluateRowsForAlert(alert, data, { database, broadcast });
+  } finally {
+    runningAlerts.delete(alertId);
+  }
 }
