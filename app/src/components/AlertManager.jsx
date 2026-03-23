@@ -221,6 +221,7 @@ export default function AlertManager({ alertPrefill }) {
       cabin:       alertPrefill.cabin       || f.cabin,
       date_from:   alertPrefill.dateFrom    || f.date_from,
       date_to:     alertPrefill.dateTo      || f.date_to,
+      transferable: alertPrefill.transferable ?? f.transferable,
     }));
     setCreating(true);
   }, [alertPrefill]);

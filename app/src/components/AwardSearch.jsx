@@ -420,7 +420,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             <div className="flex items-center gap-2">
               {onCreateAlert && (
                 <button
-                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo })}
+                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo, transferable: onlyTransferable })}
                   title="Create an alert for this route"
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">
                   <Bell size={12} /> Alert
