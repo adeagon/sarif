@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Search, ExternalLink, Zap, DollarSign, RefreshCw, ArrowLeftRight, Calendar, Plus, X, Bell } from 'lucide-react';
 import { PROGRAMS, CARRIERS, CABINS, PROGRAM_KEY_MAP, TRANSFER_TO_KEYS, parseAirlines, bookLink, fmt, fmtDate, fmtTaxes, cppColor } from '../utils/awardConstants.js';
 
+const CABIN_LABELS = { Y: 'Economy', W: 'Premium Economy', J: 'Business', F: 'First' };
+
 function AirlineBadges({ raw }) {
   const airlines = parseAirlines(raw);
   if (!airlines.length) return <span className="text-slate-600">—</span>;
@@ -50,32 +52,35 @@ function CabinFareRow({ label, prices, loading, highlight }) {
 }
 
 // Reusable results section (used for both outbound and return)
-function ResultsSection({ available, cabin, origin, destination, cashPrice, programFilter, sortBy, onHubSearch, usableKeys }) {
+// `available` entries are emitted by filterResults — each has .cabin and .cabinLabel
+function ResultsSection({ available, cabinsLabel, origin, destination, cashPrice, programFilter, sortBy, onHubSearch, usableKeys }) {
   const filtered = available.filter(r =>
     programFilter === 'all' || r.Source === programFilter
   );
 
   const sorted = [...filtered].sort((a, b) =>
     sortBy === 'price'
-      ? a[`${cabin}MileageCostRaw`] - b[`${cabin}MileageCostRaw`]
+      ? a[`${a.cabin}MileageCostRaw`] - b[`${b.cabin}MileageCostRaw`]
       : new Date(a.Date) - new Date(b.Date)
   );
 
+  // Key by source+cabin so Business Aeroplan and Economy Aeroplan are separate cards
   const bestByProgram = {};
   available.forEach(r => {
-    const cost = r[`${cabin}MileageCostRaw`];
-    if (!bestByProgram[r.Source] || cost < bestByProgram[r.Source].cost) {
+    const cost = r[`${r.cabin}MileageCostRaw`];
+    const key  = `${r.Source}-${r.cabin}`;
+    if (!bestByProgram[key] || cost < bestByProgram[key].cost) {
       const rDest = r.Route?.DestinationAirport;
-      bestByProgram[r.Source] = { cost, date: r.Date, seats: r[`${cabin}RemainingSeatsRaw`], taxes: r[`${cabin}TotalTaxesRaw`], actualDest: rDest };
+      bestByProgram[key] = { source: r.Source, cabin: r.cabin, cabinLabel: r.cabinLabel, cost, date: r.Date, seats: r[`${r.cabin}RemainingSeatsRaw`], taxes: r[`${r.cabin}TotalTaxesRaw`], actualDest: rDest };
     }
   });
 
-  const cheapestMiles = available.length ? Math.min(...available.map(r => r[`${cabin}MileageCostRaw`])) : null;
+  const cheapestMiles = available.length ? Math.min(...available.map(r => r[`${r.cabin}MileageCostRaw`])) : null;
 
   if (Object.keys(bestByProgram).length === 0) {
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-2 text-center">
-        <div className="text-slate-400 text-sm">No {CABINS.find(c => c.key === cabin)?.label} availability — {origin} → {destination}</div>
+        <div className="text-slate-400 text-sm">No {cabinsLabel} availability — {origin} → {destination}</div>
         <div className="text-slate-600 text-xs">Try a different cabin, adjust the date range, or uncheck the transferable filter.</div>
         <div className="text-xs text-slate-600 pt-1">
           Some regional airports aren't indexed by Seats.aero. Try searching via a major hub (VIE, FRA, IST, LHR) and book the full itinerary on the program's website.
@@ -90,10 +95,10 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-semibold text-slate-300">
-            {CABINS.find(c => c.key === cabin)?.label} · {origin} → {destination}
+            {origin} → {destination}
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{available.length} dates</span>
+            <span className="text-xs text-slate-500">{available.length} results</span>
             <a href={`https://www.skyscanner.com/transport/flights/${origin}/${destination}/`}
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg transition-colors">
@@ -112,19 +117,20 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
           </div>
         )}
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-          {Object.entries(bestByProgram).sort((a, b) => a[1].cost - b[1].cost).map(([source, info]) => {
-            const prog           = PROGRAMS[source];
+          {Object.entries(bestByProgram).sort((a, b) => a[1].cost - b[1].cost).map(([key, info]) => {
+            const prog           = PROGRAMS[info.source];
             const isTransferable = prog?.transferFrom?.length > 0;
             const isCheapest     = info.cost === cheapestMiles;
-            const canUse         = usableKeys?.has(source);
+            const canUse         = usableKeys?.has(info.source);
             return (
-              <div key={source} className={`rounded-xl border p-3 space-y-1.5 ${
+              <div key={key} className={`rounded-xl border p-3 space-y-1.5 ${
                 isCheapest ? 'border-emerald-500/40 bg-emerald-500/8' : canUse ? 'border-blue-500/25 bg-blue-500/5' : isTransferable ? 'border-white/10 bg-white/5' : 'border-white/5 bg-white/3'
               }`}>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {isCheapest && <Zap size={10} className="text-emerald-400 shrink-0" />}
                   {canUse && !isCheapest && <Zap size={10} className="text-blue-400 shrink-0" />}
-                  <div className="text-xs text-slate-300 font-medium truncate">{prog?.name || source}</div>
+                  <div className="text-xs text-slate-300 font-medium truncate">{prog?.name || info.source}</div>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-slate-400 whitespace-nowrap">{info.cabinLabel}</span>
                 </div>
                 <div className="text-xl font-semibold font-mono text-white">{fmt(info.cost)}</div>
                 <div className="text-xs text-slate-500">
@@ -146,7 +152,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                     </div>
                   );
                 })()}
-                <a href={bookLink(source, origin, info.actualDest || destination)} target="_blank" rel="noopener noreferrer"
+                <a href={bookLink(info.source, origin, info.actualDest || destination)} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 rounded-md px-2.5 py-1 transition-colors whitespace-nowrap">
                   View availability <ExternalLink size={9} />
                 </a>
@@ -165,6 +171,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
               <thead>
                 <tr className="text-xs text-slate-500 border-b border-white/5 bg-white/3">
                   <th className="text-left px-5 py-2.5 font-medium">Date</th>
+                  <th className="text-left px-3 py-2.5 font-medium">Cabin</th>
                   <th className="text-left px-3 py-2.5 font-medium">Program</th>
                   <th className="text-left px-3 py-2.5 font-medium">Miles</th>
                   <th className="text-left px-3 py-2.5 font-medium">Taxes</th>
@@ -177,15 +184,15 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
               </thead>
               <tbody className="divide-y divide-white/5">
                 {sorted.map((r, i) => {
-                  const prog     = PROGRAMS[r.Source];
-                  const miles    = r[`${cabin}MileageCostRaw`];
-                  const taxes    = r[`${cabin}TotalTaxesRaw`];
-                  const seats    = r[`${cabin}RemainingSeatsRaw`];
-                  const airlinesRaw = r[`${cabin}Airlines`];
-                  const isDirect = r[`${cabin}Direct`];
+                  const prog        = PROGRAMS[r.Source];
+                  const miles       = r[`${r.cabin}MileageCostRaw`];
+                  const taxes       = r[`${r.cabin}TotalTaxesRaw`];
+                  const seats       = r[`${r.cabin}RemainingSeatsRaw`];
+                  const airlinesRaw = r[`${r.cabin}Airlines`];
+                  const isDirect    = r[`${r.cabin}Direct`];
                   const actualOrigin = r.Route?.OriginAirport;
-                  const actualDest = r.Route?.DestinationAirport;
-                  const isCheap  = miles === cheapestMiles;
+                  const actualDest   = r.Route?.DestinationAirport;
+                  const isCheap     = miles === cheapestMiles;
                   return (
                     <tr key={i} className={`hover:bg-white/5 transition-colors ${isCheap ? 'bg-emerald-500/5' : ''}`}>
                       <td className="px-5 py-2.5 text-xs font-mono text-slate-300 whitespace-nowrap">
@@ -195,6 +202,7 @@ function ResultsSection({ available, cabin, origin, destination, cashPrice, prog
                           <span className="ml-2 text-slate-400">→ {actualDest}</span>
                         )}
                       </td>
+                      <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">{r.cabinLabel}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-300">{prog?.name || r.Source}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className={`font-mono font-semibold ${isCheap ? 'text-emerald-400' : 'text-white'}`}>{fmt(miles)}</span>
@@ -287,7 +295,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
   const firstDest = savedRoutes[0]?.to || 'LHR';
   const [origin,          setOrigin]          = useState(homeAirport || 'JFK');
   const [destination,     setDestination]     = useState(firstDest);
-  const [cabin,           setCabin]           = useState('J');
+  const [cabins,          setCabins]          = useState(['J']);
   const [isRoundTrip,     setIsRoundTrip]     = useState(false);
   const [dateFrom,        setDateFrom]        = useState('');
   const [dateTo,          setDateTo]          = useState('');
@@ -364,7 +372,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
     setCashPEPrices(null);
     setProgramFilter('all');
 
-    fetchCashPrices(o, d, cabin);
+    fetchCashPrices(o, d, 'Y');
     fetchCashBizPrices(o, d, 'J', setCashBizLoading, setCashBizPrices);
     fetchCashBizPrices(o, d, 'W', setCashPELoading, setCashPEPrices);
 
@@ -397,23 +405,27 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
   }
 
   function filterResults(allResults) {
-    return (allResults || []).filter(r => {
-      const avail = r[`${cabin}Available`];
-      const cost  = r[`${cabin}MileageCostRaw`];
-      if (!avail || !cost) return false;
-      if (onlyTransferable && !PROGRAMS[r.Source]?.transferFrom?.length) return false;
-      if (onlyDirect && !r[`${cabin}Direct`]) return false;
-      if (dateFrom && r.Date < dateFrom) return false;
-      if (dateTo   && r.Date > dateTo)   return false;
-      return true;
-    });
+    const entries = [];
+    for (const r of allResults || []) {
+      for (const cab of cabins) {
+        const avail = Boolean(r[`${cab}Available`]);
+        const cost  = r[`${cab}MileageCostRaw`] ?? 0;
+        if (!avail || cost <= 0) continue;
+        if (onlyTransferable && !PROGRAMS[r.Source]?.transferFrom?.length) continue;
+        if (onlyDirect && !r[`${cab}Direct`]) continue;
+        if (dateFrom && r.Date < dateFrom) continue;
+        if (dateTo   && r.Date > dateTo) continue;
+        entries.push({ ...r, cabin: cab, cabinLabel: CABIN_LABELS[cab] });
+      }
+    }
+    return entries;
   }
 
   const available    = filterResults(results);
   const retAvailable = filterResults(retResults);
   const programsPresent = [...new Set((results || []).map(r => r.Source).concat((retResults || []).map(r => r.Source)))];
 
-  const cabinLabel = CABINS.find(c => c.key === cabin)?.label || cabin;
+  const cabinLabel = cabins.map(k => CABIN_LABELS[k]).join(', ');
   const hasCashData = cashPrices !== null || cashBizPrices !== null || cashPEPrices !== null;
 
   return (
@@ -431,9 +443,10 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             <div className="flex items-center gap-2">
               {onCreateAlert && (
                 <button
-                  onClick={() => onCreateAlert({ origin, destination, cabin, dateFrom, dateTo, transferable: onlyTransferable })}
-                  title="Create an alert for this route"
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">
+                  onClick={() => cabins.length === 1 && onCreateAlert({ origin, destination, cabin: cabins[0], dateFrom, dateTo, transferable: onlyTransferable })}
+                  disabled={cabins.length > 1}
+                  title={cabins.length > 1 ? 'Select a single cabin to create an alert' : 'Create an alert for this route'}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 transition-colors ${cabins.length > 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-amber-500/20'}`}>
                   <Bell size={12} /> Alert
                 </button>
               )}
@@ -519,9 +532,13 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
               <label className="text-xs text-slate-500 block mb-1">Cabin</label>
               <div className="flex gap-1">
                 {CABINS.map(c => (
-                  <button key={c.key} onClick={() => setCabin(c.key)}
+                  <button key={c.key} onClick={() => setCabins(prev =>
+                    prev.includes(c.key)
+                      ? prev.length > 1 ? prev.filter(k => k !== c.key) : prev
+                      : [...prev, c.key]
+                  )}
                     className={`text-xs px-3 py-2 rounded-lg border transition-colors ${
-                      cabin === c.key ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                      cabins.includes(c.key) ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
                     }`}>
                     {c.label}
                   </button>
@@ -612,7 +629,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
                 <label className="text-xs text-slate-500 block mb-0.5">
                   Cash price — {cabinLabel} (for ¢/pt)
                   {(cashBizLoading || cashPELoading) && <span className="ml-1 text-slate-600"><RefreshCw size={10} className="inline animate-spin" /> fetching...</span>}
-                  {cabin === 'Y' && cashPrices?.length > 0 && !cashLoading && <span className="ml-1 text-emerald-400/70">· auto from Travelpayouts</span>}
+                  {cabins.includes('Y') && cashPrices?.length > 0 && !cashLoading && <span className="ml-1 text-emerald-400/70">· auto from Travelpayouts</span>}
                 </label>
                 <input type="number" value={cashPrice} onChange={e => setCashPrice(e.target.value)}
                   placeholder="e.g. 2800"
@@ -666,7 +683,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             label="Business"
             prices={cashBizPrices}
             loading={cashBizLoading}
-            highlight={cabin === 'J'}
+            highlight={cabins.includes('J')}
           />
 
           {/* Premium Economy prices */}
@@ -676,7 +693,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             </div>
           )}
           {cashPEPrices !== null && !cashPELoading && cashPEPrices.length > 0 && (
-            <CabinFareRow label="Premium Eco" prices={cashPEPrices} loading={false} highlight={cabin === 'W'} />
+            <CabinFareRow label="Premium Eco" prices={cashPEPrices} loading={false} highlight={cabins.includes('W')} />
           )}
           {cashPEPrices !== null && !cashPELoading && cashPEPrices.length === 0 && (
             <div className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -692,7 +709,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
           {/* Economy prices */}
           <div>
             <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5 flex-wrap">
-              <span className={cabin === 'Y' ? 'text-slate-300 font-medium' : ''}>Economy</span>
+              <span className={cabins.includes('Y') ? 'text-slate-300 font-medium' : ''}>Economy</span>
               {cashLoading && <span className="flex items-center gap-1 text-slate-600"><RefreshCw size={12} className="animate-spin" /> fetching...</span>}
               {cashPrices !== null && !cashLoading && <span className="text-slate-600">· Travelpayouts</span>}
             </div>
@@ -710,7 +727,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
                   const gflUrl = `https://www.google.com/travel/flights?q=flights+from+${origin}+to+${destination}${p.date ? '+on+' + p.date : ''}`;
                   return (
                     <a key={i} href={gflUrl} target="_blank" rel="noopener noreferrer"
-                      className={`rounded-xl border px-3 py-2 block hover:border-blue-500/40 transition-colors ${i === 0 && cabin === 'Y' ? 'border-emerald-500/40 bg-emerald-500/8' : 'border-white/10 bg-white/3'}`}>
+                      className={`rounded-xl border px-3 py-2 block hover:border-blue-500/40 transition-colors ${i === 0 && cabins.includes('Y') ? 'border-emerald-500/40 bg-emerald-500/8' : 'border-white/10 bg-white/3'}`}>
                       <div className="text-base font-semibold font-mono text-white">${p.price}</div>
                       <div className="text-xs text-slate-500">
                         {p.date ? fmtDate(p.date) : '—'}
@@ -743,7 +760,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             )}
             <ResultsSection
               available={available}
-              cabin={cabin}
+              cabinsLabel={cabinLabel}
               origin={origin}
               destination={destination}
               cashPrice={cashPrice}
@@ -764,7 +781,7 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
               </div>
               <ResultsSection
                 available={retAvailable}
-                cabin={cabin}
+                cabinsLabel={cabinLabel}
                 origin={destination}
                 destination={origin}
                 cashPrice={cashPrice}
@@ -778,8 +795,8 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
 
           {/* Round trip summary */}
           {isRoundTrip && available.length > 0 && retAvailable.length > 0 && (() => {
-            const bestOut = Math.min(...available.map(r => r[`${cabin}MileageCostRaw`]));
-            const bestRet = Math.min(...retAvailable.map(r => r[`${cabin}MileageCostRaw`]));
+            const bestOut = Math.min(...available.map(r => r[`${r.cabin}MileageCostRaw`]));
+            const bestRet = Math.min(...retAvailable.map(r => r[`${r.cabin}MileageCostRaw`]));
             const total   = bestOut + bestRet;
             return (
               <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-center justify-between flex-wrap gap-3">
