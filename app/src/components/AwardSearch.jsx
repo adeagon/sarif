@@ -400,9 +400,9 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
     return (allResults || []).filter(r => {
       const avail = r[`${cabin}Available`];
       const cost  = r[`${cabin}MileageCostRaw`];
-      if (!avail || !cost) return false;
-      if (onlyTransferable && !PROGRAMS[r.Source]?.transferFrom?.length) return false;
-      if (onlyDirect && !r[`${cabin}Direct`]) return false;
+      if (!avail || !cost) { console.log('[filter drop] no avail/cost', r.Source, r.Date, { avail, cost }); return false; }
+      if (onlyTransferable && !PROGRAMS[r.Source]?.transferFrom?.length) { console.log('[filter drop] not transferable', r.Source); return false; }
+      if (onlyDirect && !r[`${cabin}Direct`]) { console.log('[filter drop] not direct', r.Source, r.Date, `${cabin}Direct=`, r[`${cabin}Direct`]); return false; }
       if (dateFrom && r.Date < dateFrom) return false;
       if (dateTo   && r.Date > dateTo)   return false;
       return true;

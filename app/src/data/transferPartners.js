@@ -7,12 +7,12 @@ export const TRANSFER_PARTNERS = {
     "Air Canada Aeroplan", "Flying Blue (AF/KLM)", "Avianca LifeMiles",
     "British Airways Avios", "Singapore KrisFlyer", "ANA Mileage Club",
     "Virgin Atlantic", "Emirates Skywards", "Delta SkyMiles",
-    "Lufthansa Miles & More", "Etihad Guest", "Finnair Plus",
-    "Iberia Plus", "JetBlue TrueBlue",
+    "Etihad Guest", "Cathay Pacific Asia Miles", "Iberia Plus", "JetBlue TrueBlue",
+    "Qantas Frequent Flyer", "Qatar Airways Privilege Club",
   ],
   "Chase UR": [
     "Air Canada Aeroplan", "Flying Blue (AF/KLM)", "United MileagePlus",
     "British Airways Avios", "Singapore KrisFlyer", "Virgin Atlantic",
-    "Emirates Skywards", "Iberia Plus", "JetBlue TrueBlue",
+    "Iberia Plus", "JetBlue TrueBlue", "Southwest Rapid Rewards", "Aer Lingus AerClub",
   ],
 };
