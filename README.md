@@ -2,12 +2,13 @@
   <img src="app/public/sarif.svg" width="48" alt="Sarif" />
 </p>
 
-<h1 align="center">Sarif</h1>
+<h1 align="center">Sarif (Personal Fork)</h1>
 
 <p align="center">
-  Travel intelligence dashboard for frequent flyers and digital nomads.
-  <br>Award search, award alerts, points tracking, US and Schengen stay counters. Runs locally.
+  A personal fork of Sarif for award search, alerting, points tracking, and travel-presence planning.
 </p>
+
+> **Fork note:** This repo is a personal fork of [jcdentonintheflesh/sarif](https://github.com/jcdentonintheflesh/sarif), adapted and extended for my own use case. The original project and core concept are by [@vxdenton](https://x.com/vxdenton).
 
 ## Quickstart
 
@@ -90,4 +91,4 @@ React 19, Vite, Tailwind CSS, Recharts, Express, SQLite (better-sqlite3), localS
 
 ---
 
-Built by [@vxdenton](https://x.com/vxdenton)
+Original project by [@vxdenton](https://x.com/vxdenton). This fork adds award alerts, Docker/Compose deployment, Raspberry Pi hosting guidance, Pushover notifications, and other workflow-specific changes.
