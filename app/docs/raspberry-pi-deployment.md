@@ -66,7 +66,7 @@ Recommend setting a DHCP reservation on your router so the Pi always gets the sa
 
 ## Persistence
 
-SQLite lives at `app/data/sarif.db` on the host (bind-mounted into the container). Data survives container restarts and rebuilds. To back up, copy `app/data/sarif.db` off the Pi.
+SQLite lives at `data/sarif.db` (relative to `app/`) on the host (bind-mounted into the container). Data survives container restarts and rebuilds. To back up, copy `data/sarif.db` off the Pi.
 
 ## Update
 
@@ -110,5 +110,47 @@ curl -s http://<pi-ip>:3002/api/alerts        # expect same alert still present
 Verify SQLite bind mount on host:
 
 ```bash
-ls app/data/sarif.db
+ls data/sarif.db
+```
+
+## Operations
+
+### Health monitoring
+
+The app exposes a health endpoint:
+
+```bash
+curl http://localhost:3002/api/health
+# {"ok":true,"service":"sarif"}
+```
+
+Docker also uses this for its built-in healthcheck — `docker compose ps` will show `(healthy)` once the container passes.
+
+**Uptime Kuma:** Add an HTTP(s) monitor pointing to `http://<pi-ip>:3002/api/health` with keyword `"ok":true`.
+
+### Backup
+
+SQLite lives at `data/sarif.db` (relative to `app/` on the host). Copy it to a timestamped backup:
+
+```bash
+cp data/sarif.db data/sarif-$(date +%F).db
+```
+
+Run this from `app/`. Copy the backup off the Pi to keep it safe.
+
+### Restore
+
+```bash
+docker compose down
+cp data/sarif-YYYY-MM-DD.db data/sarif.db
+docker compose up -d
+```
+
+### Troubleshooting
+
+```bash
+docker compose ps                           # check health status
+docker compose logs -f                      # stream logs
+curl http://localhost:3002/api/health       # confirm 200 + ok:true
+ls data/sarif.db                            # confirm DB file exists
 ```
