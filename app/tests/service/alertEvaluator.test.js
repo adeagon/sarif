@@ -3,9 +3,9 @@ import { createTestDb } from '../helpers/createTestDb.js';
 import {
   insertAlert, SEATS_API_SUCCESS, SEATS_API_EMPTY,
   mockFetchSuccess, mockFetch429, mockFetch500,
-  SEATS_ROW_MATCH, SEATS_ROW_MATCH_ALT, makeSeatsRow,
+  SEATS_ROW_MATCH, SEATS_ROW_MATCH_ALT, SEATS_ROW_DUAL_CABIN, makeSeatsRow,
 } from '../helpers/fixtures.js';
-import { evaluateAlert, evaluateRowsForAlert, runningAlerts } from '../../server/services/alertEvaluator.js';
+import { evaluateAlert, evaluateRowsForAlert, runningAlerts, getMatchingCabins, fingerprint } from '../../server/services/alertEvaluator.js';
 import { runPollCycle } from '../../server/services/alertScheduler.js';
 import { sendNotification } from '../../server/services/pushover.js';
 
@@ -217,15 +217,15 @@ describe('evaluateRowsForAlert()', () => {
   });
 
   it('missed_polls resets to 0 for seen match', async () => {
-    // Insert a match with missed_polls=2
+    // Insert a match with missed_polls=2 using the current fingerprint format (includes cabin)
     db.prepare(`
       INSERT INTO alert_matches (alert_id, fingerprint, source, date, cabin, status, missed_polls)
       VALUES (?, ?, 'aeroplan', '2026-06-15', 'J', 'active', 2)
-    `).run(alertId, `${alertId}-avail-001`);
+    `).run(alertId, `${alertId}-J-avail-001`);
 
     await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
 
-    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = ?`).get(`${alertId}-avail-001`);
+    const match = db.prepare(`SELECT * FROM alert_matches WHERE fingerprint = ?`).get(`${alertId}-J-avail-001`);
     expect(match.missed_polls).toBe(0);
   });
 
@@ -382,5 +382,106 @@ describe('evaluateRowsForAlert()', () => {
     expect(manualMatches.length).toBe(scheduledMatches.length);
     expect(manualMatches.every(m => m.status === 'active')).toBe(true);
     expect(scheduledMatches.every(m => m.status === 'active')).toBe(true);
+  });
+});
+
+// ── Multi-cabin alerting ───────────────────────────────────────────────────────
+
+describe('getMatchingCabins()', () => {
+  it('single-cabin alert: returns [cabin] when row matches', () => {
+    const a = { ...alert };
+    expect(getMatchingCabins(SEATS_ROW_MATCH, a)).toEqual(['J']);
+  });
+
+  it('single-cabin alert: returns [] when row does not match', () => {
+    const a = { ...alert };
+    const expensiveRow = makeSeatsRow({ JMileageCostRaw: 999999 });
+    expect(getMatchingCabins(expensiveRow, a)).toEqual([]);
+  });
+
+  it('multi-cabin alert: returns both cabins when both match', () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 80000 });
+    expect(getMatchingCabins(SEATS_ROW_DUAL_CABIN, a)).toEqual(['J', 'Y']);
+  });
+
+  it('multi-cabin alert: per-cabin direct filter — only J when direct_only=1 and Y is non-direct', () => {
+    // SEATS_ROW_DUAL_CABIN has JDirect=true, YDirect=false
+    const a = insertAlert(db, { cabin: 'J,Y', direct_only: 1, max_miles: 80000 });
+    expect(getMatchingCabins(SEATS_ROW_DUAL_CABIN, a)).toEqual(['J']);
+  });
+
+  it('multi-cabin alert: returns [] when no cabin matches', () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 5000 }); // too low for both
+    expect(getMatchingCabins(SEATS_ROW_DUAL_CABIN, a)).toEqual([]);
+  });
+});
+
+describe('fingerprint() — cabin specificity', () => {
+  it('same row + different cabins → different fingerprints', () => {
+    const fpJ = fingerprint(1, SEATS_ROW_DUAL_CABIN, 'J');
+    const fpY = fingerprint(1, SEATS_ROW_DUAL_CABIN, 'Y');
+    expect(fpJ).not.toBe(fpY);
+  });
+
+  it('same row + same cabin → same fingerprint', () => {
+    const fp1 = fingerprint(1, SEATS_ROW_DUAL_CABIN, 'J');
+    const fp2 = fingerprint(1, SEATS_ROW_DUAL_CABIN, 'J');
+    expect(fp1).toBe(fp2);
+  });
+
+  it('includes cabin key in the fingerprint string', () => {
+    const fp = fingerprint(1, SEATS_ROW_DUAL_CABIN, 'J');
+    expect(fp).toContain('-J-');
+  });
+});
+
+describe('evaluateRowsForAlert() — multi-cabin', () => {
+  it('multi-cabin alert + dual-cabin row → 2 distinct match records', async () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 80000 });
+    const result = await evaluateRowsForAlert(a, [SEATS_ROW_DUAL_CABIN], opts());
+    expect(result.matchesNew).toBe(2);
+    const matches = db.prepare(`SELECT * FROM alert_matches WHERE alert_id = ?`).all(a.id);
+    expect(matches).toHaveLength(2);
+    const cabins = matches.map(m => m.cabin).sort();
+    expect(cabins).toEqual(['J', 'Y']);
+  });
+
+  it('multi-cabin match records store cabin-specific miles', async () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 80000 });
+    await evaluateRowsForAlert(a, [SEATS_ROW_DUAL_CABIN], opts());
+    const matches = db.prepare(`SELECT cabin, miles FROM alert_matches WHERE alert_id = ? ORDER BY cabin`).all(a.id);
+    const jMatch = matches.find(m => m.cabin === 'J');
+    const yMatch = matches.find(m => m.cabin === 'Y');
+    expect(jMatch.miles).toBe(70000);
+    expect(yMatch.miles).toBe(40000);
+  });
+
+  it('multi-cabin direct filter: only J match when direct_only=1', async () => {
+    const a = insertAlert(db, { cabin: 'J,Y', direct_only: 1, max_miles: 80000 });
+    const result = await evaluateRowsForAlert(a, [SEATS_ROW_DUAL_CABIN], opts());
+    expect(result.matchesNew).toBe(1);
+    const matches = db.prepare(`SELECT cabin FROM alert_matches WHERE alert_id = ?`).all(a.id);
+    expect(matches[0].cabin).toBe('J');
+  });
+
+  it('multi-cabin broadcasts per-cabin SSE events', async () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 80000 });
+    await evaluateRowsForAlert(a, [SEATS_ROW_DUAL_CABIN], opts());
+    expect(broadcast).toHaveBeenCalledTimes(2);
+    const cabinsBroadcast = broadcast.mock.calls.map(c => c[0].cabin).sort();
+    expect(cabinsBroadcast).toEqual(['J', 'Y']);
+  });
+
+  it('multi-cabin sends per-cabin Pushover notifications', async () => {
+    const a = insertAlert(db, { cabin: 'J,Y', max_miles: 80000 });
+    await evaluateRowsForAlert(a, [SEATS_ROW_DUAL_CABIN], opts());
+    expect(sendNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it('single-cabin alert still works correctly after refactor', async () => {
+    const result = await evaluateRowsForAlert(alert, SEATS_API_SUCCESS.data, opts());
+    expect(result.matchesNew).toBe(2);
+    const matches = db.prepare(`SELECT cabin FROM alert_matches WHERE alert_id = ?`).all(alertId);
+    expect(matches.every(m => m.cabin === 'J')).toBe(true);
   });
 });

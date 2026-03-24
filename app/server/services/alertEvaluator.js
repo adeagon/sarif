@@ -14,7 +14,7 @@ export const runningAlerts = new Set();
  */
 export function fingerprint(alertId, row, cabin) {
   const availId = row.ID || row.id || row.AvailabilityID;
-  if (availId) return `${alertId}-${availId}`;
+  if (availId) return `${alertId}-${cabin}-${availId}`;
   const miles    = row[`${cabin}MileageCostRaw`] ?? '';
   const taxes    = row[`${cabin}TotalTaxesRaw`]  ?? '';
   const seats    = row[`${cabin}RemainingSeatsRaw`] ?? '';
@@ -69,6 +69,15 @@ export function matchesCriteria(row, alert) {
   if (alert.date_to   && row.Date > alert.date_to)   return false;
 
   return true;
+}
+
+/**
+ * Returns the array of cabin keys from alert.cabin (comma-separated) that
+ * each pass matchesCriteria against the given row. Empty array if none match.
+ */
+export function getMatchingCabins(row, alert) {
+  const cabins = alert.cabin.split(',').map(c => c.trim()).filter(Boolean);
+  return cabins.filter(cabin => matchesCriteria(row, { ...alert, cabin }));
 }
 
 /**
@@ -161,71 +170,74 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
 
     const runTransaction = database.transaction(() => {
       for (const row of rows) {
-        if (!matchesCriteria(row, alert)) continue;
+        const matchingCabins = getMatchingCabins(row, alert);
+        if (matchingCabins.length === 0) continue;
 
-        const fp      = fingerprint(alertId, row, alert.cabin);
-        const availId = row.ID || row.id || row.AvailabilityID || null;
+        for (const cabin of matchingCabins) {
+          const fp      = fingerprint(alertId, row, cabin);
+          const availId = row.ID || row.id || row.AvailabilityID || null;
 
-        // Date-based expiration takes precedence — past travel dates expire immediately.
-        // Rows first encountered with a past date are silently ignored (no match inserted);
-        // only previously-tracked matches reach this branch and get expired.
-        if (row.Date < today) {
-          database.prepare(`
-            UPDATE alert_matches SET status = 'expired'
-            WHERE alert_id = ? AND fingerprint = ? AND status IN ('new', 'active')
-          `).run(alertId, fp);
-          continue;
-        }
+          // Date-based expiration takes precedence — past travel dates expire immediately.
+          // Rows first encountered with a past date are silently ignored (no match inserted);
+          // only previously-tracked matches reach this branch and get expired.
+          if (row.Date < today) {
+            database.prepare(`
+              UPDATE alert_matches SET status = 'expired'
+              WHERE alert_id = ? AND fingerprint = ? AND status IN ('new', 'active')
+            `).run(alertId, fp);
+            continue;
+          }
 
-        const prev = database.prepare(
-          'SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?'
-        ).get(alertId, fp);
+          const prev = database.prepare(
+            'SELECT id, status FROM alert_matches WHERE alert_id = ? AND fingerprint = ?'
+          ).get(alertId, fp);
 
-        seenFingerprints.add(fp);
+          seenFingerprints.add(fp);
 
-        insertMatch.run({
-          alert_id:        alertId,
-          fingerprint:     fp,
-          source:          row.Source,
-          date:            row.Date,
-          cabin:           alert.cabin,
-          miles:           row[`${alert.cabin}MileageCostRaw`] || null,
-          taxes:           row[`${alert.cabin}TotalTaxesRaw`]  || null,
-          seats:           row[`${alert.cabin}RemainingSeatsRaw`] || null,
-          direct:              row[`${alert.cabin}Direct`] ? 1 : 0,
-          airlines:            row[`${alert.cabin}Airlines`] || null,
-          availability_id:     availId,
-          origin_airport:      row.Route?.OriginAirport      || null,
-          destination_airport: row.Route?.DestinationAirport || null,
-        });
-
-        if (!prev) {
-          matchesNew++;
-          broadcast({
-            type:        'match',
-            alertId,
-            alertName:   alert.name || `${alert.origin}→${alert.destination}`,
-            origin:      alert.origin,
-            destination: alert.destination,
-            cabin:       alert.cabin,
-            match: {
-              fingerprint: fp,
-              source:      row.Source,
-              date:        row.Date,
-              miles:       row[`${alert.cabin}MileageCostRaw`],
-              taxes:       row[`${alert.cabin}TotalTaxesRaw`],
-              seats:       row[`${alert.cabin}RemainingSeatsRaw`],
-              direct:      row[`${alert.cabin}Direct`],
-              airlines:    row[`${alert.cabin}Airlines`],
-            },
+          insertMatch.run({
+            alert_id:            alertId,
+            fingerprint:         fp,
+            source:              row.Source,
+            date:                row.Date,
+            cabin,
+            miles:               row[`${cabin}MileageCostRaw`] || null,
+            taxes:               row[`${cabin}TotalTaxesRaw`]  || null,
+            seats:               row[`${cabin}RemainingSeatsRaw`] || null,
+            direct:              row[`${cabin}Direct`] ? 1 : 0,
+            airlines:            row[`${cabin}Airlines`] || null,
+            availability_id:     availId,
+            origin_airport:      row.Route?.OriginAirport      || null,
+            destination_airport: row.Route?.DestinationAirport || null,
           });
-          pendingNotifications.push({
-            fp,
-            title:   `${alert.origin} → ${row.Route?.DestinationAirport || alert.destination}`,
-            message: formatMatchMessage(row, alert.cabin),
-          });
-        } else {
-          matchesSeen++;
+
+          if (!prev) {
+            matchesNew++;
+            broadcast({
+              type:        'match',
+              alertId,
+              alertName:   alert.name || `${alert.origin}→${alert.destination}`,
+              origin:      alert.origin,
+              destination: alert.destination,
+              cabin,
+              match: {
+                fingerprint: fp,
+                source:      row.Source,
+                date:        row.Date,
+                miles:       row[`${cabin}MileageCostRaw`],
+                taxes:       row[`${cabin}TotalTaxesRaw`],
+                seats:       row[`${cabin}RemainingSeatsRaw`],
+                direct:      row[`${cabin}Direct`],
+                airlines:    row[`${cabin}Airlines`],
+              },
+            });
+            pendingNotifications.push({
+              fp,
+              title:   `${alert.origin} → ${row.Route?.DestinationAirport || alert.destination}`,
+              message: formatMatchMessage(row, cabin),
+            });
+          } else {
+            matchesSeen++;
+          }
         }
       }
 

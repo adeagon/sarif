@@ -21,7 +21,8 @@ function RunStatusIcon({ status }) {
 }
 
 function CabinLabel({ cabin }) {
-  return CABINS.find(c => c.key === cabin)?.label || cabin;
+  const keys = (cabin || '').split(',').filter(Boolean);
+  return keys.map(k => CABINS.find(c => c.key === k)?.label || k).join(', ');
 }
 
 function AlertCard({ alert, onToggle, onDelete, onRun, running }) {
@@ -134,6 +135,7 @@ function AlertCard({ alert, onToggle, onDelete, onRun, running }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold text-white text-sm">{fmt(m.miles)}</span>
+                        <span className="text-xs bg-slate-700/50 border border-white/10 rounded px-1.5 py-0.5 text-slate-400"><CabinLabel cabin={m.cabin} /></span>
                         <span className="text-xs text-slate-500">{fmtDate(m.date)}</span>
                         {m.taxes > 0 && <span className="text-xs text-slate-500">+{fmtTaxes(m.taxes)} taxes</span>}
                         {m.direct ? <span className="text-xs text-emerald-400">direct</span> : null}
@@ -312,6 +314,17 @@ export default function AlertManager({ alertPrefill }) {
     }
   }
 
+  function toggleCabin(key) {
+    setForm(f => {
+      const current = f.cabin.split(',').filter(Boolean);
+      if (current.includes(key)) {
+        if (current.length === 1) return f; // can't deselect last
+        return { ...f, cabin: current.filter(k => k !== key).join(',') };
+      }
+      return { ...f, cabin: [...current, key].join(',') };
+    });
+  }
+
   function toggleProgram(key) {
     setForm(f => ({
       ...f,
@@ -360,12 +373,23 @@ export default function AlertManager({ alertPrefill }) {
               <input value={form.destination} onChange={fieldSet('destination')} required placeholder="NRT"
                 maxLength={4} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase focus:outline-none focus:border-blue-500 transition-colors" />
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <label className="text-xs text-slate-500 block mb-1">Cabin *</label>
-              <select value={form.cabin} onChange={fieldSet('cabin')}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                {CABINS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-              </select>
+              <div className="flex gap-1.5 flex-wrap">
+                {CABINS.map(c => {
+                  const selected = form.cabin.split(',').includes(c.key);
+                  return (
+                    <button key={c.key} type="button" onClick={() => toggleCabin(c.key)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                        selected
+                          ? 'bg-blue-500/25 border-blue-500/40 text-blue-300'
+                          : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
+                      }`}>
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label className="text-xs text-slate-500 block mb-1">Name (optional)</label>

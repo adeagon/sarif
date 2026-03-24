@@ -39,6 +39,26 @@ export const SEATS_ROW_MATCH_ALT = {
   JAvailable: true,
 };
 
+// Row where both J (Business) and Y (Economy) are available
+export const SEATS_ROW_DUAL_CABIN = {
+  Date: '2026-06-15',
+  Source: 'aeroplan',
+  ID: 'avail-dual',
+  Route: { OriginAirport: 'JFK', DestinationAirport: 'NRT' },
+  JMileageCostRaw: 70000,
+  JTotalTaxesRaw: 5600,
+  JRemainingSeatsRaw: 2,
+  JDirect: true,
+  JAirlines: 'NH',
+  JAvailable: true,
+  YMileageCostRaw: 40000,
+  YTotalTaxesRaw: 2000,
+  YRemainingSeatsRaw: 4,
+  YDirect: false,
+  YAirlines: 'NH',
+  YAvailable: true,
+};
+
 export const SEATS_ROW_NO_ID = {
   ...SEATS_ROW_MATCH,
   ID: undefined,
