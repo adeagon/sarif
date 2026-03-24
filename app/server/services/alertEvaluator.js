@@ -173,9 +173,9 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
         const matchingCabins = getMatchingCabins(row, alert);
         if (matchingCabins.length === 0) continue;
 
+        const availId = row.ID || row.id || row.AvailabilityID || null;
         for (const cabin of matchingCabins) {
-          const fp      = fingerprint(alertId, row, cabin);
-          const availId = row.ID || row.id || row.AvailabilityID || null;
+          const fp = fingerprint(alertId, row, cabin);
 
           // Date-based expiration takes precedence — past travel dates expire immediately.
           // Rows first encountered with a past date are silently ignored (no match inserted);
