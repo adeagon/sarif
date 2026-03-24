@@ -5,6 +5,8 @@ import { PROGRAMS } from '../awardConstants.js';
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes — matches index.js
 
+const CABIN_LABELS = { J: 'Business', W: 'Premium Eco', Y: 'Economy', F: 'First' };
+
 // Per-alert concurrency guard
 export const runningAlerts = new Set();
 
@@ -232,7 +234,7 @@ export async function evaluateRowsForAlert(alert, rows, { database = db, broadca
             });
             pendingNotifications.push({
               fp,
-              title:   `${alert.origin} → ${row.Route?.DestinationAirport || alert.destination}`,
+              title:   `${alert.origin} → ${row.Route?.DestinationAirport || alert.destination} · ${CABIN_LABELS[cabin] || cabin}`,
               message: formatMatchMessage(row, cabin),
             });
           } else {

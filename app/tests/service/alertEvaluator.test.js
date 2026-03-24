@@ -309,7 +309,7 @@ describe('evaluateRowsForAlert()', () => {
     await evaluateRowsForAlert(alert, [SEATS_ROW_MATCH], opts());
     expect(sendNotification).toHaveBeenCalledOnce();
     const call = vi.mocked(sendNotification).mock.calls[0][0];
-    expect(call.title).toBe('JFK → NRT');
+    expect(call.title).toBe('JFK → NRT · Business');
     expect(call.message).toMatch(/Aeroplan|aeroplan/i);
     expect(call.message).toMatch(/70k/);
   });
