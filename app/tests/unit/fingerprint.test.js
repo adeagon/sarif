@@ -2,19 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { fingerprint } from '../../server/services/alertEvaluator.js';
 
 describe('fingerprint()', () => {
-  it('uses row.ID when present', () => {
+  it('uses row.ID when present, includes cabin', () => {
     const row = { ID: 'avail-001', Date: '2026-06-15', Source: 'aeroplan' };
-    expect(fingerprint(42, row, 'J')).toBe('42-avail-001');
+    expect(fingerprint(42, row, 'J')).toBe('42-J-avail-001');
   });
 
-  it('falls back to row.id when row.ID is absent', () => {
+  it('falls back to row.id when row.ID is absent, includes cabin', () => {
     const row = { id: 'avail-002', Date: '2026-06-15', Source: 'aeroplan' };
-    expect(fingerprint(42, row, 'J')).toBe('42-avail-002');
+    expect(fingerprint(42, row, 'J')).toBe('42-J-avail-002');
   });
 
-  it('falls back to row.AvailabilityID as last resort', () => {
+  it('falls back to row.AvailabilityID as last resort, includes cabin', () => {
     const row = { AvailabilityID: 'avail-003', Date: '2026-06-15', Source: 'aeroplan' };
-    expect(fingerprint(42, row, 'J')).toBe('42-avail-003');
+    expect(fingerprint(42, row, 'J')).toBe('42-J-avail-003');
   });
 
   it('builds composite fingerprint when no ID fields exist', () => {

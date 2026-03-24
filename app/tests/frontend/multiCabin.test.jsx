@@ -88,19 +88,19 @@ describe('Multi-cabin selection — toggle state', () => {
 // ── Alert button ──────────────────────────────────────────────────────────────
 
 describe('Multi-cabin selection — Alert button', () => {
-  it('is enabled when a single cabin is selected', async () => {
+  it('is always enabled (single cabin)', async () => {
     render(<AwardSearch homeAirport="LAX" onCreateAlert={vi.fn()} />);
     const alertBtn = await waitFor(() => screen.getByTitle(/create an alert/i));
     expect(alertBtn).not.toBeDisabled();
   });
 
-  it('is disabled when multiple cabins are selected', async () => {
+  it('is enabled even when multiple cabins are selected', async () => {
     const user = userEvent.setup();
     render(<AwardSearch homeAirport="LAX" onCreateAlert={vi.fn()} />);
     const econBtn = await waitFor(() => screen.getByRole('button', { name: 'Economy' }));
     await user.click(econBtn);
-    const alertBtn = screen.getByTitle(/select a single cabin/i);
-    expect(alertBtn).toBeDisabled();
+    const alertBtn = screen.getByTitle(/create an alert/i);
+    expect(alertBtn).not.toBeDisabled();
   });
 
   it('passes single cabin key when single cabin is selected', async () => {
@@ -111,6 +111,18 @@ describe('Multi-cabin selection — Alert button', () => {
     await user.click(alertBtn);
     expect(onCreateAlert).toHaveBeenCalledTimes(1);
     expect(onCreateAlert.mock.calls[0][0].cabin).toBe('J');
+  });
+
+  it('passes comma-separated cabins when multiple cabins are selected', async () => {
+    const onCreateAlert = vi.fn();
+    const user = userEvent.setup();
+    render(<AwardSearch homeAirport="LAX" onCreateAlert={onCreateAlert} />);
+    const econBtn = await waitFor(() => screen.getByRole('button', { name: 'Economy' }));
+    await user.click(econBtn);
+    const alertBtn = screen.getByTitle(/create an alert/i);
+    await user.click(alertBtn);
+    expect(onCreateAlert).toHaveBeenCalledTimes(1);
+    expect(onCreateAlert.mock.calls[0][0].cabin).toBe('J,Y');
   });
 });
 

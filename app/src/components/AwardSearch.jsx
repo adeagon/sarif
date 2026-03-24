@@ -443,10 +443,9 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             <div className="flex items-center gap-2">
               {onCreateAlert && (
                 <button
-                  onClick={() => cabins.length === 1 && onCreateAlert({ origin, destination, cabin: cabins[0], dateFrom, dateTo, transferable: onlyTransferable })}
-                  disabled={cabins.length > 1}
-                  title={cabins.length > 1 ? 'Select a single cabin to create an alert' : 'Create an alert for this route'}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 transition-colors ${cabins.length > 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-amber-500/20'}`}>
+                  onClick={() => onCreateAlert({ origin, destination, cabin: cabins.join(','), dateFrom, dateTo, transferable: onlyTransferable })}
+                  title="Create an alert for this route"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors">
                   <Bell size={12} /> Alert
                 </button>
               )}
