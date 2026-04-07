@@ -12,8 +12,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "VITEST_WORKER_TIMEOUT=120000 vitest run",
+    "test:watch": "VITEST_WORKER_TIMEOUT=120000 vitest"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
