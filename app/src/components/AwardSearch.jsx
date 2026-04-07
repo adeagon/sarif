@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ExternalLink, Zap, DollarSign, RefreshCw, ArrowLeftRight, Calendar, Plus, X, Bell } from 'lucide-react';
+import { Search, ExternalLink, Zap, DollarSign, RefreshCw, ArrowLeftRight, Calendar, Plus, X, Bell, Bookmark } from 'lucide-react';
 import { PROGRAMS, CARRIERS, CABINS, PROGRAM_KEY_MAP, TRANSFER_TO_KEYS, parseAirlines, bookLink, fmt, fmtDate, fmtTaxes, cppColor } from '../utils/awardConstants.js';
 
 const CABIN_LABELS = { Y: 'Economy', W: 'Premium Economy', J: 'Business', F: 'First' };
@@ -243,6 +243,26 @@ function ResultsSection({ available, cabinsLabel, origin, destination, cashPrice
 // Popular international destinations to seed quick routes for any home airport
 const SEED_DESTINATIONS = ['LHR', 'CDG', 'NRT', 'AMS', 'DXB'];
 
+const CABIN_ORDER = ['Y', 'W', 'J', 'F'];
+
+function normalizeCabins(cabs) {
+  return [...cabs].sort((a, b) => CABIN_ORDER.indexOf(a) - CABIN_ORDER.indexOf(b));
+}
+
+function isValidSavedSearch(s) {
+  return s
+    && typeof s.id === 'string'
+    && typeof s.name === 'string'
+    && typeof s.origin === 'string'
+    && typeof s.destination === 'string'
+    && Array.isArray(s.cabins)
+    && (typeof s.dateFrom === 'string' || s.dateFrom == null)
+    && (typeof s.dateTo === 'string' || s.dateTo == null)
+    && (typeof s.isRoundTrip === 'boolean' || s.isRoundTrip == null)
+    && (typeof s.onlyTransferable === 'boolean' || s.onlyTransferable == null)
+    && (typeof s.onlyDirect === 'boolean' || s.onlyDirect == null);
+}
+
 function loadSavedRoutes(home) {
   try {
     const raw = localStorage.getItem('sarif_quick_routes');
@@ -259,10 +279,25 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
   const [newRouteOrig, setNewRouteOrig] = useState('');
   const [newRouteDest, setNewRouteDest] = useState('');
 
+  const [savedSearches, setSavedSearches] = useState(() => {
+    try {
+      const raw = localStorage.getItem('sarif_saved_searches');
+      if (raw) return JSON.parse(raw).filter(isValidSavedSearch);
+    } catch { /* ignore */ }
+    return [];
+  });
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState('');
+
   // Persist routes to localStorage
   useEffect(() => {
     localStorage.setItem('sarif_quick_routes', JSON.stringify(savedRoutes));
   }, [savedRoutes]);
+
+  // Persist saved searches to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('sarif_saved_searches', JSON.stringify(savedSearches)); } catch { /* quota/private mode */ }
+  }, [savedSearches]);
 
   // Re-seed if home airport changes and no saved routes exist
   useEffect(() => {
@@ -289,6 +324,80 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
 
   function removeRoute(idx) {
     setSavedRoutes(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function generateSearchLabel() {
+    const route = `${origin}→${destination}`;
+    const cabAbbr = { J: 'Biz', W: 'Pre', Y: 'Eco', F: 'Fir' };
+    const cab = normalizeCabins(cabins).map(k => cabAbbr[k] || k).join('/');
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const fmtD = d => { const [,m,dd] = d.split('-'); return `${MONTHS[+m-1]} ${+dd}`; };
+    let dateStr = '';
+    if (dateFrom && dateTo) dateStr = `${fmtD(dateFrom)}–${fmtD(dateTo)}`;
+    else if (dateFrom) dateStr = `from ${fmtD(dateFrom)}`;
+    else if (dateTo) dateStr = `to ${fmtD(dateTo)}`;
+    const flags = [];
+    if (isRoundTrip) flags.push('RT');
+    if (onlyDirect) flags.push('Direct');
+    if (!onlyTransferable) flags.push('All pgms');
+    return [route, cab, dateStr, ...flags].filter(Boolean).join(' · ');
+  }
+
+  function isDuplicateSearch(config) {
+    const cabs = JSON.stringify(normalizeCabins(config.cabins));
+    return savedSearches.some(existing =>
+      existing.origin === config.origin &&
+      existing.destination === config.destination &&
+      JSON.stringify(normalizeCabins(existing.cabins)) === cabs &&
+      existing.isRoundTrip === config.isRoundTrip &&
+      existing.dateFrom === config.dateFrom &&
+      existing.dateTo === config.dateTo &&
+      existing.onlyTransferable === config.onlyTransferable &&
+      existing.onlyDirect === config.onlyDirect
+    );
+  }
+
+  function saveSearch() {
+    const o = origin.trim().toUpperCase();
+    const d = destination.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(o) || !/^[A-Z]{3}$/.test(d) || o === d) {
+      setSavingSearch(false); setSaveSearchName(''); return;
+    }
+    const name = saveSearchName.trim() || generateSearchLabel();
+    const config = {
+      id: crypto.randomUUID(),
+      name,
+      origin: o,
+      destination: d,
+      cabins: normalizeCabins(cabins),
+      isRoundTrip,
+      dateFrom: dateFrom || '',
+      dateTo: dateTo || '',
+      onlyTransferable,
+      onlyDirect,
+    };
+    if (isDuplicateSearch(config)) { setSavingSearch(false); setSaveSearchName(''); return; }
+    setSavedSearches(prev => [...prev, config]);
+    setSavingSearch(false);
+    setSaveSearchName('');
+  }
+
+  function loadSearch(s) {
+    setOrigin((s.origin || '').trim().toUpperCase());
+    setDestination((s.destination || '').trim().toUpperCase());
+    setCabins(normalizeCabins(s.cabins || []));
+    setIsRoundTrip(!!s.isRoundTrip);
+    setDateFrom(s.dateFrom || '');
+    setDateTo(s.dateTo || '');
+    setOnlyTransferable(s.onlyTransferable ?? true);
+    setOnlyDirect(!!s.onlyDirect);
+    setProgramFilter('all');
+    setSortBy('price');
+    setCashPrice('');
+  }
+
+  function removeSearch(id) {
+    setSavedSearches(prev => prev.filter(s => s.id !== id));
   }
 
   // Figure out which seats.aero program keys the user can use
@@ -527,6 +636,28 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
             )}
           </div>
 
+          {/* Saved searches */}
+          {savedSearches.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-xs text-slate-600 mr-1">Searches:</span>
+              {savedSearches.map(s => (
+                <div key={s.id} className="group relative">
+                  <button
+                    onClick={() => loadSearch(s)}
+                    className="text-xs px-2.5 py-1 rounded-lg border transition-colors pr-6 bg-white/5 border-white/10 text-slate-400 hover:text-slate-200">
+                    {s.name}
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); removeSearch(s.id); }}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
+                    title="Remove saved search">
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Route + cabin + search */}
           <div className="flex gap-3 flex-wrap items-end">
             <div>
@@ -566,7 +697,29 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
               <Search size={14} />
               {loading ? 'Searching...' : 'Search'}
             </button>
+            <button
+              onClick={() => { setSaveSearchName(generateSearchLabel()); setSavingSearch(true); }}
+              disabled={!/^[A-Z]{3}$/.test(origin.trim()) || !/^[A-Z]{3}$/.test(destination.trim()) || origin.trim() === destination.trim()}
+              title="Save this search"
+              aria-label="Save current search"
+              className="flex items-center justify-center px-2 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-blue-400 hover:border-blue-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+              <Bookmark size={14} />
+            </button>
           </div>
+          {savingSearch && (
+            <form onSubmit={e => { e.preventDefault(); saveSearch(); }}
+              onKeyDown={e => { if (e.key === 'Escape') { setSavingSearch(false); setSaveSearchName(''); } }}
+              className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Save as:</span>
+              <input autoFocus value={saveSearchName}
+                onChange={e => setSaveSearchName(e.target.value)}
+                placeholder={generateSearchLabel()}
+                className="bg-slate-800 border border-blue-500/40 rounded px-2 py-1 text-xs text-white focus:outline-none flex-1 max-w-xs" />
+              <button type="submit" className="text-blue-400 hover:text-blue-300 text-xs">save</button>
+              <button type="button" onClick={() => { setSavingSearch(false); setSaveSearchName(''); }}
+                className="text-slate-600 hover:text-slate-400 text-xs">cancel</button>
+            </form>
+          )}
         </div>
 
         {/* Divider */}
