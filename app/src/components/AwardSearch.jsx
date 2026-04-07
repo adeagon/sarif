@@ -256,6 +256,7 @@ function loadSavedRoutes(home) {
 export default function AwardSearch({ homeAirport = 'JFK', points = [], destinations = {}, onCreateAlert }) {
   const [savedRoutes, setSavedRoutes] = useState(() => loadSavedRoutes(homeAirport));
   const [addingRoute, setAddingRoute] = useState(false);
+  const [newRouteOrig, setNewRouteOrig] = useState('');
   const [newRouteDest, setNewRouteDest] = useState('');
 
   // Persist routes to localStorage
@@ -270,15 +271,20 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
     }
   }, [homeAirport]);
 
-  function addRoute(dest) {
-    const d = (dest || newRouteDest).trim().toUpperCase();
-    if (!d || d.length < 3) return;
-    const from = origin || homeAirport;
-    if (from === d) return; // no self-routes
-    if (savedRoutes.some(r => r.from === from && r.to === d)) return; // no dupes
-    setSavedRoutes(prev => [...prev, { from, to: d }]);
-    setNewRouteDest('');
+  function resetAddRouteForm() {
     setAddingRoute(false);
+    setNewRouteOrig('');
+    setNewRouteDest('');
+  }
+
+  function addRoute() {
+    const o = (newRouteOrig || origin || homeAirport || '').trim().toUpperCase();
+    const d = newRouteDest.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(o) || !/^[A-Z]{3}$/.test(d)) return;
+    if (o === d) return;
+    if (savedRoutes.some(r => r.from?.toUpperCase() === o && r.to?.toUpperCase() === d)) return;
+    setSavedRoutes(prev => [...prev, { from: o, to: d }]);
+    resetAddRouteForm();
   }
 
   function removeRoute(idx) {
@@ -488,22 +494,33 @@ export default function AwardSearch({ homeAirport = 'JFK', points = [], destinat
               </div>
             ))}
             {addingRoute ? (
-              <form onSubmit={(e) => { e.preventDefault(); addRoute(); }} className="flex items-center gap-1">
-                <span className="text-xs text-slate-500 font-mono">{origin} →</span>
+              <form onSubmit={(e) => { e.preventDefault(); addRoute(); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') resetAddRouteForm(); }}
+                className="flex items-center gap-1">
+                <input
+                  value={newRouteOrig}
+                  onChange={e => setNewRouteOrig(e.target.value.toUpperCase())}
+                  placeholder={origin || homeAirport || 'JFK'}
+                  maxLength={3}
+                  aria-label="Origin airport"
+                  className="w-14 bg-slate-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-white font-mono uppercase focus:outline-none"
+                />
+                <span className="text-xs text-slate-500">→</span>
                 <input
                   autoFocus
                   value={newRouteDest}
                   onChange={e => setNewRouteDest(e.target.value.toUpperCase())}
                   placeholder="LHR"
-                  maxLength={4}
-                  className="w-16 bg-slate-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-white font-mono uppercase focus:outline-none"
+                  maxLength={3}
+                  aria-label="Destination airport"
+                  className="w-14 bg-slate-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-white font-mono uppercase focus:outline-none"
                 />
                 <button type="submit" className="text-blue-400 hover:text-blue-300 text-xs">add</button>
-                <button type="button" onClick={() => setAddingRoute(false)} className="text-slate-600 hover:text-slate-400 text-xs">cancel</button>
+                <button type="button" onClick={resetAddRouteForm} className="text-slate-600 hover:text-slate-400 text-xs">cancel</button>
               </form>
             ) : (
               <button
-                onClick={() => setAddingRoute(true)}
+                onClick={() => { setNewRouteOrig(origin || homeAirport || ''); setNewRouteDest(''); setAddingRoute(true); }}
                 className="text-xs px-2 py-1 rounded-lg border border-dashed border-white/10 text-slate-600 hover:text-slate-300 hover:border-white/20 transition-colors flex items-center gap-1">
                 <Plus size={10} /> route
               </button>
